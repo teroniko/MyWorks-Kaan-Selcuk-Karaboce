@@ -13,8 +13,8 @@ namespace Tags
             NewPlayer = 1,
             PosRot = 2,
             Rot = 3,
-            AttackDefenceLegdeath = 4
-
+            InteractionType = 4
+            //,LegCondition=5
         }
     }
 

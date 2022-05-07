@@ -1,12 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using DarkRift.Server;
 using DarkRift;
 using Tags;
-using System.Threading;
 
 namespace Bug_Wars_Online
 {
@@ -22,7 +17,7 @@ namespace Bug_Wars_Online
             ClientManager.ClientDisconnected += OnClientDisconnected;
         }
         
-        //List<IClient> Players=new List<IClient>();
+       
         private void OnClientConnected(object sender, ClientConnectedEventArgs e)
         {
             Console.WriteLine("Connected");
@@ -65,18 +60,7 @@ namespace Bug_Wars_Online
         
         private void OnMessageReceived(object sender, MessageReceivedEventArgs e)
         {
-            //using (Message message = e.GetMessage())
-            //{
-            //    using (DarkRiftReader reader = message.GetReader())
-            //    {
-            //        ushort ID=reader.ReadUInt16();
-            //        XYZ pos = reader.ReadSerializable<XYZ>();
-            //        Console.WriteLine(pos.X);
-
-            //    }
-
-
-            //}
+            
             using (Message message = e.GetMessage())
             {
                 if (message.Tag == (ushort)Models.Tags0.PosRot|| message.Tag == (ushort)Models.Tags0.Rot)
@@ -92,7 +76,7 @@ namespace Bug_Wars_Online
                     }
 
                 }
-                if (message.Tag == (ushort)Models.Tags0.AttackDefenceLegdeath)
+                if (message.Tag == (ushort)Models.Tags0.InteractionType)
                 {
                     foreach (IClient client in ClientManager.GetAllClients())
                     {
@@ -110,89 +94,8 @@ namespace Bug_Wars_Online
 
 
 
-                //rot ve posrot'u birleştirip tek bir tag eklemek daha optimize olabilir
-
-
-
-                //using (DarkRiftReader reader = message.GetReader())
-                //{
-                //    if (message.Tag == (ushort)Models.Tags0.Position)
-                //    {
-
-                //        foreach (IClient client in ClientManager.GetAllClients())
-                //        {
-                //            if (client.ID != e.Client.ID)
-                //            {
-
-                //                client.SendMessage(message, SendMode.Unreliable);
-                //                Console.WriteLine("Server toke " + client.ID);
-
-
-                //            }
-                //        }
-                //    }
-
-                //}
-
-
             }
         }
     }
 }
 
-//string textMessage=reader.ReadString();
-//Console.WriteLine(textMessage);
-
-
-
-
-
-
-//using (DarkRiftReader reader = message.GetReader())
-//{
-//Chat chat = reader.ReadSerializable<Chat>();
-
-
-//else if(message.Tag == (ushort)Models.Tags0.MessageSender)
-//{
-//    foreach (ushort Player in Players)
-//    {
-//        Console.WriteLine(Player);
-//        //chat.chatMessage = "send message";
-//        using (Message message0 = Message.Create((ushort)Models.Tags0.MessageTaker, chat))
-//        {
-//            e.Client.SendMessage(message0, SendMode.Reliable);//unreliable yap,dene
-
-//        }
-//    }
-//}
-//}
-
-
-
-
-
-//foreach (IClient Player in Players)
-//{
-//    //using (Message message0 = Message.Create((ushort)Models.Tags0.MessageTaker, chat))
-//    //{
-//    //    Player.SendMessage(message0, SendMode.Unreliable);//unreliable yap,dene
-//    //    //Console.WriteLine(Player);
-//    //    Console.WriteLine(Player.ID);
-//    //    Console.WriteLine(chat.PosX);
-
-//    //}
-//    using (Message message0 = Message.Create((ushort)Models.Tags0.PlayerSpawn, chat))
-//    {
-//        Player.SendMessage(message0, SendMode.Reliable);//unreliable yap,dene
-//        //Console.WriteLine(Player);
-//        Console.WriteLine(Player.ID);
-
-
-//    }
-//}
-
-
-
-//chat.chatMessage = "take message";
-//Console.WriteLine(chat.chatMessage);

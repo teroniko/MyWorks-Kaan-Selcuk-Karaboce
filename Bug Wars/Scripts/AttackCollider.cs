@@ -18,8 +18,4 @@ public class AttackCollider : MonoBehaviour
             StartCoroutine(SpiderScript.Attack(other.gameObject));
         }
     }
-    public void MainMenu()
-    {
-        SceneManager.LoadScene("MainMenu");
-    }
 }

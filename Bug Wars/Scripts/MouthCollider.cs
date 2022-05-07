@@ -6,11 +6,14 @@ public class MouthCollider : MonoBehaviour
 {
     Spider SpiderScript;
     Collider c;
+    LayerMask contactLayer;
     private void Awake()
     {
         SpiderScript = transform.parent.GetComponent<Spider>();
         c = GetComponent<Collider>();
+        contactLayer = SpiderScript.contactLayer;
     }
+
     //IEnumerator LegActive(GameObject g)
     //{
     //    yield return new WaitForSeconds(0.01f);
@@ -40,7 +43,7 @@ public class MouthCollider : MonoBehaviour
             //walkCollider.radius = 0.5f;
             //walkCollider.transform.position = new Vector3(0, 0.1f, 0);
 
-            
+
             StartCoroutine(SpiderScript.Message("Leg life taken!"));
             SpiderScript.Hit = true;
             Spider OtherSpiderScript = other.GetComponentInParent<Spider>();
@@ -65,7 +68,7 @@ public class MouthCollider : MonoBehaviour
             //}
             //BugLeg leg = g.GetComponent<BugLeg>();
 
-            OtherSpiderScript.LegHealthDown(other.gameObject.GetComponentInChildren<BugLeg>(),3);
+            OtherSpiderScript.LegHealthDown(other.gameObject.GetComponentInChildren<BugLeg>(), 3);
             Death(OtherSpiderScript);
 
 
@@ -77,7 +80,7 @@ public class MouthCollider : MonoBehaviour
         else if (other.transform.name == "tarantula_Abdomen_bone")
         {
             SpiderScript.Hit = true;
-            Spider OtherSpiderScript = other.transform.root.Find("Tarantula").GetComponent<Spider>();
+            Spider OtherSpiderScript = other.GetComponentInParent<Spider>();
 
 
             Debug.Log("Deadly hit!");
@@ -86,11 +89,18 @@ public class MouthCollider : MonoBehaviour
             SpiderScript.BloodSplash(OtherSpiderScript);
             OtherSpiderScript.LegsHealthDown();
             Death(OtherSpiderScript);
-
+            OtherSpiderScript.RecoilJump(SpiderScript.transform.position, 0.15f);
             c.enabled = false;
             //RecoilJump(OtherSpiderScript, SpiderScript.transform.position);
 
-            //StartCoroutine(RecoilJump(OtherSpiderScript, SpiderScript.transform.position));
+        }
+        else if ((1 << other.gameObject.layer) == contactLayer && !SpiderScript.Hit)
+        {
+            SpiderScript.Hit = true;
+            Debug.Log("Hit failed!");
+            StartCoroutine(SpiderScript.Message("Hit failed!"));
+            SpiderScript.RecoilJump(other.transform.position, 0.15f);
+            c.enabled = false;
         }
     }
     private void Death(Spider OtherSpiderScript)

@@ -12,7 +12,10 @@ public class Power : MonoBehaviour
     public Slider Energy;
     float loopUnit;
     float moment;
-    
+    private void Awake()
+    {
+        moment = 0.1f;
+    }
     public void UpdateActiveTEnergy()
     {
 
@@ -20,7 +23,7 @@ public class Power : MonoBehaviour
 
 
 
-        moment = 0.1f;
+        
         loopUnit = slider.maxValue / (ActiveTimeEnergy / moment);
     }
     public IEnumerator Active()
@@ -31,11 +34,31 @@ public class Power : MonoBehaviour
 
         //Energy.value -= requiredEnergy;
         //ActiveTime / moment=loopcount
-        for (float time = 0; time < ActiveTimeEnergy; time += moment)
+
+
+
+
+
+
+        //for (float time = 0; time < ActiveTimeEnergy; time += moment)
+        //{
+        //    yield return new WaitForSeconds(moment);
+        //    slider.value += loopUnit;
+            
+            
+        //}
+
+
+
+
+        while (!Ready())
         {
             yield return new WaitForSeconds(moment);
             slider.value += loopUnit;
+
+
         }
+        slider.value = slider.maxValue;
     }
     public bool Ready()
     {

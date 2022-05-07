@@ -6,15 +6,21 @@ using DarkRift;
 using Tags;
 using DarkRift.Client;
 using UnityEngine.InputSystem;
+using System.Net;
+using System.Linq;
+using System;
+using UnityEngine.SceneManagement;
 
 public class NetworkManager : MonoBehaviour
 {
+    public static string IP;
     public UnityClient client;
     public GameObject Bug;
     public Transform[] PlayerBegin;
     public Light DirLight;
 
     public List<GameObject> Bugs;
+    public Material OtherTarantulaMaterial;
     //server açýk deðilken baðlanýnca hata veriyor engellemeye çalýþýlabilir
     IEnumerator Connection()
     {
@@ -39,41 +45,64 @@ public class NetworkManager : MonoBehaviour
     private void Awake()
     {
 
-        //StartCoroutine(Connection());
+        //IPv6 = Dns.GetHostEntry(Dns.GetHostName())
+        //     .AddressList.First(
+        //         f => f.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6);
+        //Debug.Log(IPv6);
 
-        client.MessageReceived += OnMessageReceived;
-        DontDestroyOnLoad(gameObject);
-        //farklý oyuncular baðlandýðýnda onlarý ayný oyun üzerine koymam lazým ondan sonra pozisyon update
-        //bir player giriþ yapýnca her playera o spawnlanýcak ve client.idleri doðru olacak
-
-        //Chat chat =new Chat();
-        //using (Message message = Message.Create((ushort)Models.Tags0.PlayerSpawn, chat))
+        //var host = Dns.GetHostEntry(Dns.GetHostName());
+        //foreach (var ip in host.AddressList)
         //{
-        //    client.SendMessage(message, SendMode.Reliable);
-
+        //    if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+        //    {
+        //        IPv6= ip;
+        //    }
         //}
+        //Debug.Log(IPv6);
+        //client.Connect(IPv6, client.Port, true);
+
+        //client.Host = ServerIP.IP.ToString();
+        //client.Connect(IPAddress.Parse(ServerIP.IP), client.Port, true);
+
+        //DontDestroyOnLoad(gameObject);
+
+        string ip = IP.Substring(0, IP.Length - 1);//static stringi algýlamýyor, böyle yapýnca "static"ten kurtuluyor
+
+        try
+        {
+            client.Connect(ip, client.Port, true);
+        }
+        catch (Exception e)
+        {
+            ServerIP.WrongIP = true;
+            Debug.Log("Disconnected");
+            SceneManager.LoadScene("ServerIP");
+        }
+        finally { client.MessageReceived += OnMessageReceived; }
         
     }
-    
+  
+
     private void OnDestroy()
     {
 
         client.MessageReceived -= OnMessageReceived;
     }
-    public void AttackDefenceLegdeath(byte Condition)//legdeathi de içine koyunca sorun yaratýr mý? sanýrým hayýr
+    public void Interaction(byte Condition)//legdeathi de içine koyunca sorun yaratýr mý? sanýrým hayýr
     {
         using (DarkRiftWriter writer = DarkRiftWriter.Create())
         {
             writer.Write(client.ID);
             writer.Write(Condition);
-
-            using (Message message = Message.Create((ushort)Models.Tags0.AttackDefenceLegdeath, writer))
+            
+            using (Message message = Message.Create((ushort)Models.Tags0.InteractionType, writer))
             {
                 client.SendMessage(message, SendMode.Reliable);
             }
         }
 
     }
+    
     public void PosRot(Vector3 Pos, Quaternion Rot, bool ThereIsPos)
     {
         XYZ Position=null;
@@ -113,14 +142,12 @@ public class NetworkManager : MonoBehaviour
             {
                
                 client.SendMessage(message, SendMode.Unreliable);
-                //Add more data here
+               
             }
 
 
 
         }
-        //Set fields here
-        //Message playerMessage = Message.Create((ushort)Models.Tags0.Position, Position);
         
     }
     public int PlayerId;
@@ -131,22 +158,37 @@ public class NetworkManager : MonoBehaviour
         {
             using (DarkRiftReader reader = message.GetReader())
             {
-                if (message.Tag == (ushort)Models.Tags0.AttackDefenceLegdeath)
+                if (message.Tag == (ushort)Models.Tags0.InteractionType)
                 {
                     ushort Id = reader.ReadUInt16();
                     GameObject tarantula = Bugs[Id].transform.GetChild(0).gameObject;
-                    byte ADL = reader.ReadByte();
-                    switch (ADL)
+                    byte Interaction = reader.ReadByte();
+                    Spider s = tarantula.GetComponent<Spider>();
+
+
+
+                    switch (Interaction)
                     {
-                        case 0: tarantula.GetComponent<Spider>().Attack(); break;
+                        case 0: s.Attack(); break;
                         case 1:
-                            tarantula.GetComponent<Spider>().Defence(); break;
-                        case 2:break;
+                            s.DefenceGetBug();
+                            break;
+                        case 2:
+                            s.DefenceOff();
+                            break;
+                        case 3:
+                            s.Death();
+                            break;
+                        case 4:
+                            s.LegsHealthDown();
+                            break;
+                        default:
+                            s.LegHealthDown(s.Legs[Interaction - 5], 3);
+                            break;
                     }
-                    
+
 
                 }
-
 
                 byte ThereIsPos=0;
                 if(message.Tag == (ushort)Models.Tags0.PosRot)
@@ -182,21 +224,8 @@ public class NetworkManager : MonoBehaviour
 
 
 
-                    //tarantula.transform.rotation = new Quaternion(posrot.RotX, posrot.RotY, posrot.RotZ,posrot.RotW);
-                    //Debug.Log("Id: " + posrot.Id);
-                    //Debug.Log("Bugs.Count : "+ Bugs.Count);
-
                 }
 
-                //if (message.Tag == (ushort)Models.Tags0.Rot)
-                //{
-                //    PosRot posrot = reader.ReadSerializable<PosRot>();
-                //    GameObject tarantula = Bugs[posrot.Id].transform.GetChild(0).gameObject;
-                //    tarantula.transform.rotation = new Quaternion(posrot.RotX, posrot.RotY, posrot.RotZ, posrot.RotW);
-                //    Debug.Log("Id: " + posrot.Id);
-                //    Debug.Log("Bugs.Count : " + Bugs.Count);
-
-                //}
 
                 if (message.Tag == (ushort)Models.Tags0.NewPlayer)
                 {
@@ -217,11 +246,13 @@ public class NetworkManager : MonoBehaviour
                         spider = bug.GetComponentInChildren<Spider>();
                         spider.nm = this;
                         spider.DirLight = DirLight;
+                        
                         //spider.transform.position = PlayerBegin[PlayerId].position;
                         //PosChange(spider.gameObject.transform.position);
                         if (client.ID != PlayerId)
                         {
                             //spider.enabled = false;
+                            spider.GetComponentInChildren<SkinnedMeshRenderer>().material = OtherTarantulaMaterial;
                             bug.transform.Find("Camera").gameObject.SetActive(false);
                             bug.transform.Find("CM FreeLook1").gameObject.SetActive(false);
                             bug.transform.Find("Camera Late").gameObject.SetActive(false);
@@ -236,35 +267,3 @@ public class NetworkManager : MonoBehaviour
         }
     }
 }
-
-
-
-//using (Message message = Message.Create((ushort)Models.Tags0.Position, Position))
-//{
-//    client.SendMessage(message, SendMode.Unreliable);
-//}
-
-
-
-
-
-//Message playerMessage = Message.Create((ushort)Models.Tags0.Position, Position);
-
-
-
-
-//using (DarkRiftWriter writer = new DarkRiftWriter())
-//{
-//    //Add data here
-//    writer.Write(player);
-//    //Add more data here
-//}
-//using (DarkRiftWriter writer = DarkRiftWriter.Create())
-//{
-//    writer.Write(Position);
-
-//    using (Message message = Message.Create((ushort)Models.Tags0.Position, Position))
-//    {
-//        client.SendMessage(message, SendMode.Unreliable);
-//    }
-//}
