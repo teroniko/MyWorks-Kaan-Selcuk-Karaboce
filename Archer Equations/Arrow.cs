@@ -97,20 +97,20 @@ public class Arrow : MonoBehaviour
             if (Physics.Raycast(transform.position /*+ transform.right * Arrow0Height*/, transform.right, out /*RaycastHit*/ hit, 0.8f, m.LMaskTarget))
             {
                 a = hit.transform.GetComponentInParent<Arrow>();
-
+                
                 if (hit.transform.tag == "Ball")//Another arrow
                 {
-
+                    m.PlayAudio(m.BubbleHit);
+                    m.StartCoroutine(Pop(false));
 
                     IsSticked = true;
-                    //Number.SetActive(false);
-                    //gameObject.SetActive(false);
 
 
                     CheckIfWon(false, 2);
                 }
                 else if (hit.transform.tag == "Block")
                 {
+                    m.PlayAudio(m.Leaf);
                     IsSticked = true;
                     if(m.CurrentLevelType.Type == "Training"&&m.CurrentLevelType.LevelNo == 2)
                     {
@@ -126,11 +126,12 @@ public class Arrow : MonoBehaviour
                 else/* if(hit.transform.tag=="Object")*///Cylinder
                 {
                     //transform.rotation = new Quaternion(1, transform.rotation.y, 0, 0);
-
+                    
+                    
                     StickToCylinder(hit.transform, false);
 
-                    CheckIfWon(true, 3);
-
+                    CheckIfWon(true, 4);
+                    
                 }
 
             }
@@ -139,130 +140,229 @@ public class Arrow : MonoBehaviour
         }
         IsSticked = true;
     }
+    
+    private float PopEffectDis = 0.15f;
+    private float PopEffectBallSize = 1.2f;
+    private void CylinderEffect(float PopEffectDis)
+    {
+        for (int i = 0; i < m.TE.transform.childCount; i++)
+        {
+            Arrow a = m.TE.transform.GetChild(i).GetComponentInChildren<Arrow>();
+            a.transform.position += a.transform.right * PopEffectDis;
+            //a.transform.localScale *= PopEffectBallSize;
+            //a.Number.transform.localScale *= PopEffectBallSize;
+        }
+    }
+    private void ArrowBallSizeEffect(float PopEffectBallSize)
+    {
+        a.transform.localScale *= PopEffectBallSize;
+        a.Number.transform.localScale *= PopEffectBallSize;
+        //a.Ball.transform.localScale /= PopEffectBallSize;
+        //a.gameObject.transform.position -= a.transform.right * PopEffectDis;
+    }
+    private IEnumerator Pop(bool Cylinder)
+    {
+        if (Cylinder)
+        {
+            CylinderEffect(-PopEffectDis);
+        }
+        else
+        {
+            ArrowBallSizeEffect(PopEffectBallSize);
+        }
+
+
+        float time = 0;
+
+       
+
+        while (time <= 0.17f)//bu sayıya dokunulmayacak
+        {
+            yield return new WaitForSeconds(0.005f);
+            time += Time.deltaTime;
+
+
+
+        }
+
+        if (Cylinder)
+        {
+            CylinderEffect(PopEffectDis);
+        }
+        else
+        {
+            ArrowBallSizeEffect(1/PopEffectBallSize);
+
+        }
+
+    }
+
+    private void TrainingOperation()
+    {
+        m.TrainingOperationSA = a.NoOrder;
+        StartCoroutine(m.SetTrainingOperation());
+        m.ThrowAMouseArea.enabled = false;
+
+
+        //trainingde level2 olunca nexte basmalardan birinde çağrılacak:
+        //m.TE.EquationUpdate(0, false, false);
+
+
+
+        a.NoText.text = m.FracNoToString(a.ArrowNo, false, false);
+
+        //optimize:
+        m.CloseGuideArrows();
+        m.CloseGuideTargets();
+        m.TE.ccs[0].RotSpeed = 0;
+
+        m.NextTrainingText.enabled = false;
+        m.GameGuideUI.SetActive(false);
+
+
+        //hit ile yap
+        //bu koddan 2 tane var:(stick to cylinderda)
+        Vector3 ArrowBall = a.transform.GetChild(1).position;
+        transform.position = hit.point;
+        transform.position = ArrowBall + (transform.position - ArrowBall).normalized * 1.1f;
+
+
+
+        //optimize(cross ile olabilir)
+        transform.LookAt(a.transform.position);
+        transform.Rotate(0, -90, 0);
+
+
+
+        transform.parent = m.TE.transform;
+    }
     private bool tooClose = false;
     private void CheckIfWon(bool CylinderStick, int Level)
     {
 
-        if (m.CurrentLevelType.Type == "Training" && (m.CurrentLevelType.LevelNo == 2 || m.CurrentLevelType.LevelNo == 3))
+        if (m.CurrentLevelType.Type == "Training"&& m.CurrentLevelType.LevelNo != 1  && m.CurrentLevelType.LevelNo != 6)
         {
-            if (CylinderStick || tooClose)
+            //bakılacak!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!:
+            if (CylinderStick && m.CurrentLevelType.LevelNo != 4)
             {
                 m.SetLevel();
-                tooClose = false;
             }
-            else //if(m.CurrentLevelType.LevelNo == Level)
+            else
             {
-                if (Level == 3)
+                switch (m.CurrentLevelType.LevelNo)
                 {
-                    m.StartCoroutine(m.GuideArrowUI(0, true, 0, false));
-                    m.TE.StartCoroutine(m.TE.WaitAndModify(false,null));
-                    m.TargetGuideVisible = false;
-
-                    m.NextTrainingText.enabled = false;
-
-                }
-                else
-                {
-                    
-                    //mavi mi kırmızı mı doğru?:
-                    //if (m.StickedArrows.Objects[m.CorrectFracIndex].GetComponent<Arrow>() == a)
-                    {
-
-                        StartCoroutine(m.SetTrainingOperation());
-
-                        m.ThrowAMouseArea.enabled = false;
+                    case 5:
+                        TrainingOperation();
+                        CurrentArrowUpdate();
+                        break;
+                    case 4:
                         
+                        TrainingOperation();
+                        CurrentArrowUpdate();
 
-                        //trainingde level2 olunca nexte basmalardan birinde çağrılacak:
-                        //m.TE.EquationUpdate(0, false, false);
-
-
-
-
-
-
-                        a.NoText.text = m.FracNoToString(a.ArrowNo, false, false);
-                        m.NextGuideButton.SetActive(true);
-                        //optimize:
-                        m.CloseGuideArrows();
-                        m.TE.ccs[0].RotSpeed = 0;
+                        break;
+                    case 3:
+                        TrainingOperation();
 
 
 
-
-
-
-                        //m.IfWon();
-                        //m.NextLevelButton.SetActive(true);
-                        m.NextTrainingText.enabled = false;
-                        m.GameGuideUI.SetActive(false);
-                        m.TargetGuideVisible = false;
-                        //m.NextTrainingText.enabled = false;
-                        //m.StartCoroutine(m.GuideArrowUI(0, false, 8, false));
-                        //m.StartCoroutine(m.BowToAmmo());
-
-
-                        //hit ile yap
-                        //bu koddan 2 tane var:(stick to cylinderda)
-                        Vector3 ArrowBall = a.transform.GetChild(1).position;
-                        transform.position = hit.point;
-                        transform.position = ArrowBall + (transform.position - ArrowBall).normalized * 1.1f;
-
+                        break;
+                    //case 3:
                         
+                    //    CurrentArrowUpdate();
+                        
+                    //    if (m.StickedArrows.Objects[m.CorrectFracIndex].GetComponent<Arrow>() == a)
+                    //        //a.NoOrder ile yapılabilir gerçi class ile classı eşit mi deyince içindeki numaraları karşılaştıruyo olabilir
+                    //    {
 
-                        //optimize(cross ile olabilir)
-                        transform.LookAt(a.transform.position);
-                        transform.Rotate(0, -90, 0);
+                    //        m.TE.EquationUpdate(0, false, false);
+                    //        a.NoText.text = m.FracNoToString(a.ArrowNo, false, false);
+                    //        //optimize:
+                    //        m.CloseGuideArrows();
+                    //        m.CloseGuideTargets();
+                    //        //m.NextLevelButton.SetActive(true);
+                    //        m.NextTrainingText.enabled = false;
+                    //        m.GameGuideUI.SetActive(false);
+                            
+                    //        m.NextTrainingText.enabled = false;
+                    //        //m.StartCoroutine(m.GuideArrowUI(0, false, 8, false));
+                    //        //m.StartCoroutine(m.BowToAmmo());
 
+                    //        m.IfWon();
+                    //    }
+                    //    else
+                    //    {
+                    //        m.SetLevel();
+                    //    }
+                        
+                    //    m.SetCorrectFracIndex(1);
+                    //    break;
+                    //case 4:
 
+                    //    if (!CylinderStick)
+                    //    {
 
-                        transform.parent = m.TE.transform;
-                    }
-                    //else
-                    //{
-                    //    m.SetLevel();
-                    //}
+                    //        m.SetLevel();
+                            
+                    //    }
+                    //    else if(!tooClose)
+                    //    {
+                    //        //optimize:
+                    //        m.StartCoroutine(m.GuideArrowUI(0, true, 0, false));
+                    //        m.TE.StartCoroutine(m.TE.WaitAndModify(false, null));
+                    //        m.CloseGuideArrows();
+                    //        m.CloseGuideTargets();
+                    //        m.NextTrainingText.enabled = false;
+                    //    }
+                        
+                    //    break;
                 }
-                
+
+
             }
         }
         else
         {
             if (!CylinderStick)
             {
-
-                a.ArrowNo = m.FractionalOperation(a.ArrowNo, ArrowNo);
-
-
-                m.EquationNumbers[a.NoOrder] = a.ArrowNo;
-                FracNo Equation = m.TE.No;
-
-                foreach (FracNo f in m.EquationNumbers)
-                {
-                    Equation = m.FractionalOperation(Equation, f);
-                }
-
-
-
-
-                m.TE.Equivalent = Equation;
-                m.TE.NumberText.text = m.FracNoToString(m.TE.No, false, false);
-
-
-
-
-                a.NoText.text = m.FracNoToString(a.ArrowNo, false, false);
-                Number.SetActive(false);
-                gameObject.SetActive(false);
+                CurrentArrowUpdate();
             }
-            m.TargetGuideVisible = false;
-
+            
+            m.CloseGuideArrows();
+            m.CloseGuideTargets();
+            
             m.TE.EquationUpdate(0, false, false);
 
             m.IfWon();
         }
     }
-    private IEnumerator TooClose()
+    
+    public void CurrentArrowUpdate()
+    {
+        a.ArrowNo = m.FractionalOperation(a.ArrowNo, ArrowNo);
+
+
+        m.EquationNumbers[a.NoOrder] = a.ArrowNo;
+        FracNo Equation = m.TE.No;
+
+        foreach (FracNo f in m.EquationNumbers)
+        {
+            Equation = m.FractionalOperation(Equation, f);
+        }
+
+        m.TE.Equivalent = Equation;
+        
+        m.TE.NumberText.text = m.FracNoToString(m.TE.No, false, false);
+
+
+
+
+        a.NoText.text = m.FracNoToString(a.ArrowNo, false, false);
+
+        //Number.SetActive(false);
+        //gameObject.SetActive(false);
+    }
+    private IEnumerator TooClose(bool SetLevel)
     {
         tooClose = true;
         bool blink = false;
@@ -285,10 +385,16 @@ public class Arrow : MonoBehaviour
                     SetColor(Color.white);
                 }
             }
-                
-            
+
+
+        }
+        
+        if (SetLevel)
+        {
+            m.SetLevel();
         }
         gameObject.SetActive(false);
+        tooClose = false;
     }
     
     public void StickToCylinder(Transform Cylinder, bool StickInStart)
@@ -318,35 +424,33 @@ public class Arrow : MonoBehaviour
         transform.LookAt(Cylinder.position);
         transform.Rotate(0, -90, 0);
 
-        //if (CheckBall)
-        //{
-
-
-        //    m.Arrows.Objects.Remove(gameObject);
-        //    m.Arrows.Count--;
-        //    m.StickedArrows.Objects.Add(gameObject);
-        //    m.StickedArrows.Count++;
-        //    Debug.Log("A : " + m.Arrows.Count);
-        //    Debug.Log(m.StickedArrows.Count);
-        //}
 
 
 
-        if (!StickInStart/*&& Physics.OverlapSphereNonAlloc(Ball.transform.position, Ball.GetComponent<SphereCollider>().radius * 1.1f, balls, m.LMaskTarget) > 0*/ && Physics.CheckSphere(Ball.transform.position, Ball.GetComponent<SphereCollider>().radius*0.6f/*0.7*/, m.LMaskTarget))
+        if (!StickInStart && Physics.CheckSphere(Ball.transform.position, Ball.GetComponent<SphereCollider>().radius*0.6f/*0.7*/, m.LMaskTarget))
         {
             //gameObject.SetActive(false);
             
             Number.SetActive(false);
+            Debug.Log("TooClose");
+            if (m.CurrentLevelType.Type == "Training" && m.CurrentLevelType.LevelNo == 4)
+            {
+                StartCoroutine(TooClose(true));
+            }
+            else
+            {
+                StartCoroutine(TooClose(false));
 
-
-
-
-            StartCoroutine(TooClose());
-
+            }
+            m.PlayAudio(m.TooClose);
         }
         else
         {
-
+            if (!StickInStart)
+            {
+                m.PlayAudio(m.CylinderHit);
+                m.StartCoroutine(Pop(true));
+            }
 
             //sadece bir ballun layerı değişecek:
             gameObject.layer = LMaskTarget;
@@ -375,9 +479,4 @@ public class Arrow : MonoBehaviour
         //üstüste top gelince silindirin içinden geçiyor önemli bir problem değil zaten üstüste gelince yapışmaması gerekiyor, işlem yapması gerekiyor
     }
 
-    //private IEnumerator LookAt()
-    //{
-    //    yield return new WaitForSeconds(0.1f);
-    //    transform.localEulerAngles = new Vector3(-90, transform.localEulerAngles.y, transform.localEulerAngles.z);
-    //}
 }

@@ -3,13 +3,15 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Playables;
+using UnityEngine.Timeline;
 using UnityEngine.UI;
 
 public class Main : MonoBehaviour
 {
     //optimization:(gameobject to transform?)
-    private bool Aiming = false;
-    Vector2 mouseStartedPos;
+    private bool Sliding = false;
+    private Vector2 mouseStartedPos;
     public GameObject ArcherSpine;
     public GameObject TargetSphere;
     public GameObject ArmPos;
@@ -41,7 +43,9 @@ public class Main : MonoBehaviour
     private ushort FBallCount = 3;//first ball count
     private ushort MaxFBallCount = 7;//first ball count
     private ushort MinThrow = 3;
+    private ushort MinThrowForArrows = 0;
     private ushort MaxThrow = 7;
+    private ushort MaxThrowForArrows = 0;
     private short NoRange1 = 1;//-5
     private short NoRange2 = 5;
     public byte NArrowIndex = 0;//NextArrowIndex
@@ -69,7 +73,8 @@ public class Main : MonoBehaviour
     private byte ArrowOperation = 0;//+,-,*,/
     private byte StickArrowOperation = 0;
     public TMP_Text LevelText;
-    private sbyte BlueCount;
+    private sbyte StickedBlueCount;
+    private sbyte ArrowBlueCount;
     private sbyte CurrentBlueCount = 0;
     private sbyte CurrentRedCount = 0;
     public RectTransform InformFinger;
@@ -86,19 +91,11 @@ public class Main : MonoBehaviour
     public Image GuideUIArrow2;
     public Image[] GuideUIArrows;
     public Image NextGuideDetectClick;
-    public bool TargetGuideVisible = false;
-    public RectTransform GuideEquationShowerPos;//silinecek
-    public RectTransform GuideTargetArrowShowerPos;//silinecek
-    public RectTransform GuideYourArrowShowerPos;//silinecek
     public TMP_Text ArcheryTextInfo;
     public TMP_Text MathTextInfo;
     public TMP_Text CLevelTypeText;
     public Image NextTrainingText;
-    //public TMP_Text EquationWonShower;
-    //public TMP_Text TargetWonShower;
     public TMP_Text[] NumberShower;
-    //public TMP_Text WonEquality;
-    private float WidthRatio;
     public Image[] GuideUIArrow0;
     public Image[] GuideUIArrowTop;
     public Image PlusMinusShower;
@@ -113,17 +110,38 @@ public class Main : MonoBehaviour
     public Image PlusOrMinus;
     public Sprite[] PMShower;
     private GuideArrow[] GAs = new GuideArrow[3];
+    private GuideArrow AimingGA;
+    public Image AimingGAStick;
+    public Image AimingGATop;
     //public TMP_Text TrainingOperation;
     public byte CorrectFracIndex = 0;
     public TMP_Text Durations;
     public GameObject LevelDurationButton;
-    private static bool TrainingNewlyFinished = false;
+    //private static bool TrainingNewlyFinished = false;
     public GameObject LevelButtonT;//LevelButtonTraining
     private Color RestartButColor;
     public Image RestartButImage;
     public TMP_Text ArrowNumberShower;
     public TMP_Text StickedANumberShower;
+    private GuideTarget[] GTs = new GuideTarget[2];
+    public Image CurrentBallShower;
+    public static bool TrainingAllLevelFinished=false;
+    private float CanvasScalerRatio;
+    private float MaxFingerSlideDis = 75;
+    private float WidthRatio;
+    public AudioSource AudioS;
+    
+    public AudioClip ArrowThrowing0;
+    public AudioClip BubbleHit;
+    public AudioClip CylinderHit;
+    public AudioClip Leaf;
+    public AudioClip LevelFailed;
+    public AudioClip TooClose;
+    public AudioClip WinEffect;//bunun sesini açınca cızırtı oluyor, belki başka bir ses ile değiştirilebilir ama çok kötü değil
+    //public TimelineClipExtensions timeline;
     //public ushort BallsUINextAmmo;
+    private FracNo OldFracNo;
+    
     public class GuideArrow
     {
         public Image Arrow;
@@ -136,7 +154,16 @@ public class Main : MonoBehaviour
             this.Active = Active;
         }
     }
-
+    public class GuideTarget
+    {
+        public Image Target;
+        public bool Active;
+        public GuideTarget(Image Target, bool Active)
+        {
+            this.Target = Target;
+            this.Active = Active;
+        }
+    }
     public class LevelType
     {
         public int LastLevel;
@@ -157,20 +184,34 @@ public class Main : MonoBehaviour
             {
                 LevelNo = 1;
             }
-            else if(AtLastLevel())
-            {
-                
+            //else if(AtLastLevel())
+            //{
 
-                if(PlayerPrefs.GetInt(Type + " Finished") == 0)
-                {
-                    Finished = false;
-                }
-                else
-                {
-                    Finished = true;
-                    InfoTextOn();
-                }
+
+            //    if (PlayerPrefs.GetInt(Type + " Finished") == 0)
+            //    {
+            //        Finished = false;
+            //    }
+            //    else
+            //    {
+            //        Finished = true;
+            //        InfoTextOn();
+            //    }
+            //}
+
+            if (PlayerPrefs.GetInt(Type + " Finished") == 0)
+            {
+                Finished = false;
             }
+            else
+            {
+                Finished = true;
+                InfoTextOn();
+            }
+
+
+
+
             LevelDurations = new int[LastLevel];
             for(int i = 0; i < LevelDurations.Length; i++)
             {
@@ -204,7 +245,10 @@ public class Main : MonoBehaviour
                     Finished = true;
 
                 }
-                TrainingNewlyFinished = true;
+                if (Type == "Training")
+                {
+                    TrainingAllLevelFinished = true;
+                }
             }
             else if (LevelNo < 1)
             {
@@ -401,11 +445,16 @@ public class Main : MonoBehaviour
             ga.ArrowTop.enabled = false;
             ga.Active = false;
         }
-        foreach (Image i in TargetUIGuide)
-        {
-            i.enabled = false;
-        }
+        
+    }
+    public void CloseGuideTargets()
+    {
 
+        foreach (GuideTarget gt in GTs)
+        {
+            gt.Target.enabled = false;
+            gt.Active = false;
+        }
     }
     
     public void OpenTraining()
@@ -431,38 +480,45 @@ public class Main : MonoBehaviour
     }
     public void SetLevel()
     {
-        if (Arrows.Current)
-        {
-            Arrows.Current.GetComponent<Arrow>().IsSticked = true;
-
-        }
+        
+        
+        
         OOAmmoText.enabled = false;
-        TargetGuideVisible = false;
+        
         CloseGuideArrows();
+        CloseGuideTargets();
 
         ActiveNumberShowers(false);
 
         NextLevelButton.SetActive(false);
-        NewLevel();
-
-
-        //CurrentLevelType.TextInfo < bu iki kez kullanılıyor
-        if (CurrentLevelType.Finished)
+        if (CurrentLevelType.Finished && CurrentLevelType.Type != "Training" || TrainingAllLevelFinished)
         {
-            //burası optimize edilebilir mi:(TrainingNewlyFinished'e gerek var mı)
-            if (CurrentLevelType.Type != "Training" || TrainingNewlyFinished)
-            {
-                OpenMenu();
-            }
-            if (TrainingNewlyFinished)
-            {
-                TrainingNewlyFinished = false;
-            }
+            TrainingAllLevelFinished = false;
+            OpenMenu();
+        }
+        else
+        {
+            NewLevel();
+        }
+        if (Arrows.Current)
+        {
 
+            Arrows.Current.GetComponent<Arrow>().IsSticked = true;
         }
 
 
+        //CurrentLevelType.TextInfo < bu iki kez kullanılıyor
+        
+        UpdateNextAShower();
+        StartCoroutine(NextArrowShower());
+        //her level türünde son bölümü geçince menü açılabilir olması gerekiyor
+        //training finished olsa bile açılıp kapanabilmesi gerekiyor
+        //
 
+        if (CurrentLevelType.Type == "Training" && CurrentLevelType.LevelNo == 5)
+        {
+            SetCorrectFracIndex(0);
+        }
     }
     public IEnumerator BowToAmmo()
     {
@@ -473,13 +529,13 @@ public class Main : MonoBehaviour
         {
             
             yield return new WaitForSecondsRealtime(0.1f);
-            if (Aiming)
+            if (Sliding)
             {
                 AimingBegan = true;
                 
                 if (!ga.Active)
                 {
-                    StartCoroutine(GuideArrowUI(SArrowNo, false, 3, false));
+                    StartCoroutine(GuideArrowUI(3, false));
 
                 }
             }
@@ -503,166 +559,396 @@ public class Main : MonoBehaviour
         NextGuideButton.SetActive(false);
         PlusOrMinus.enabled = false;
     }
+    string ballsNoTrainingL2;
+    string stickedNoTrainingL2;
+    public int TrainingOperationSA = 0;//TrainingOperationStickedArrow
+    private int TrainingOperationA = 0;//TrainingOperationArrow
     public IEnumerator SetTrainingOperation()
     {
+        Arrow StickedCurrentArrow = StickedArrows.Objects[TrainingOperationSA].GetComponent<Arrow>();
+        OldFracNo = StickedCurrentArrow.ArrowNo;
         yield return new WaitForSecondsRealtime(0.01f);
         ActiveNumberShowers(true);
 
+        Arrow CurrentArrow= Arrows.Objects[TrainingOperationA].GetComponent<Arrow>();
 
-        Arrow CurrentArrow= Arrows.Current.GetComponent<Arrow>();
-        Arrow StickedCurrentArrow= StickedArrows.Current.GetComponent<Arrow>();
+
+        StickedCurrentArrow.NoText.text = FracNoToString(OldFracNo,false,false);
+
 
         //optimize edilecek(belki) textten almak yerine asıl sayı olarak alınacak:
-        string ballsNo = FracNoToString(CurrentArrow.ArrowNo, false, false);
-        string stickedNo = FracNoToString(StickedCurrentArrow.ArrowNo, false, false);
-        NumberShower[2].text = ballsNo + " + " + stickedNo;
-        NumberShower[2].rectTransform.anchoredPosition = new Vector2(0, -c.GetComponent<RectTransform>().rect.height / 4f);
-        NumberShower[2].fontSize = TargetNoText.fontSize * 1.6f;
-
-        NumberShower[0].text = ballsNo;
-        NumberShower[1].text = stickedNo;
+        ballsNoTrainingL2 = FracNoToString(CurrentArrow.ArrowNo, false, false);
+        stickedNoTrainingL2 = FracNoToString(OldFracNo, false, false);
+        float NS2x = 0;
+        string operation = "+";
+        
+        if (CurrentArrow.ArrowNo.Oparetion == 1)
+        {
+            ballsNoTrainingL2 = "-" + ballsNoTrainingL2;
+            NS2x = NumberShower[1].preferredWidth / 2;
+        }
+        
+        NumberShower[0].text = ballsNoTrainingL2;
+        NumberShower[1].text = stickedNoTrainingL2;
 
 
         NumberShower[0].fontSize = CurrentArrow.Number.GetComponent<TMP_Text>().fontSize;
-        NumberShower[1].fontSize = StickedCurrentArrow.Number.GetComponent<TMP_Text>().fontSize* StickedCurrentArrow.Number.transform.localScale.x;
+        NumberShower[1].fontSize = StickedCurrentArrow.Number.GetComponent<TMP_Text>().fontSize * StickedCurrentArrow.Number.transform.localScale.x;
 
-        NumberShower[0].rectTransform.anchoredPosition = CurrentArrow.Number.GetComponent<RectTransform>().anchoredPosition;
-        NumberShower[1].rectTransform.anchoredPosition = StickedCurrentArrow.Number.GetComponent<RectTransform>().anchoredPosition;
+        NumberShower[2].text = /*ballsNo + */operation/* + stickedNo*/;
+        NumberShower[2].rectTransform.anchoredPosition = new Vector2(NS2x, -c.GetComponent<RectTransform>().rect.height / 4f);
+        NumberShower[2].fontSize = TargetNoText.fontSize * 1.6f;
 
-        StartCoroutine(GuideArrowUI(0, false, 6, false));
-        StartCoroutine(GuideArrowUI(1, false, 7, false));
+        GuideArrowUI679[0] = GuideArrowUI(6, false);
+        GuideArrowUI679[1] = GuideArrowUI(7, false);
+
+
+
+        StartCoroutine(GuideArrowUI679[0]);
+        StartCoroutine(GuideArrowUI679[1]);
+        
+
     }
+    
     public void TrainingNext()
     {
         int LevelNo = CurrentLevelType.LevelNo;
         GuideCount--;
-        if (GuideCount == 0)
+        switch (GuideCount)
         {
-            CloseGuideArrows();
-            ThrowAMouseArea.enabled = true;
-            NextGuideButton.SetActive(false);
-            switch (LevelNo)
+            case 0:
+                CloseGuideArrows();
+                CloseGuideTargets();
+                ThrowAMouseArea.enabled = true;
+                NextGuideButton.SetActive(false);
+
+                switch (LevelNo)
+                {
+                    case 1:
+
+                        break;
+                    case 2:
+
+                        
+                        NextLevel();
+
+                        break;
+                    case 3:
+
+
+                        //ThrowAMouseArea.enabled = true;
+                        //NextGuideButton.SetActive(false);
+                        //GameGuideUI.SetActive(false);
+                        //StartCoroutine(GuideTargetUI(StickedArrows.Current.GetComponent<Arrow>().Number, false, 0));
+                        
+                        Arrows.Objects[0].GetComponent<Arrow>().CurrentArrowUpdate();
+                        TE.EquationUpdate(0, false, false);
+
+
+                        IfWon();
+
+                        ActiveNumberShowers(false);
+                        NextLevelButton.SetActive(true);
+
+                        break;
+                    case 4:
+
+
+
+
+                        IfWon();
+                        GameGuideUI.SetActive(false);
+                        NextLevelButton.SetActive(true);
+                        
+                        break;
+                    case 5:
+
+                        IfWon();
+
+
+                        break;
+                }
+                break;
+            case 1:
+                switch (LevelNo)
+                {
+                    case 2:
+
+
+                        CloseGuideArrows();
+                        StartCoroutine(GuideArrowUI(13, false));
+                        NextGuideButton.SetActive(false);
+
+                        break;
+                    case 3:
+                        CloseGuideArrows();
+                        NextGuideButton.SetActive(false);
+                        int result = int.Parse(ballsNoTrainingL2) + int.Parse(stickedNoTrainingL2);
+                        NumberShower[2].text = ballsNoTrainingL2 + " + " + stickedNoTrainingL2 + " = " + result;
+                        NumberShower[0].enabled = false;
+                        NumberShower[1].enabled = false;
+                        StartCoroutine(WaitAndBringResult(result));
+
+                        break;
+                    case 4:
+                        TrainingOpResult(true);
+                        
+                        break;
+                    case 5:
+                        TrainingOpResult(false);
+
+
+
+
+
+
+                        break;
+                }
+                break;
+            case 2:
+
+                //level3:
+                //CloseGuideArrows();
+                //CloseGuideTargets();
+                //PlusOrMinus.enabled = true;
+                //StartCoroutine(GuideArrowUI(1, false, 0, true));
+
+                switch (LevelNo)
+                {
+                    case 2:
+                        CloseGuideArrows();
+                        StartCoroutine(GuideArrowUI(12, false));
+                        NextGuideButton.SetActive(false);
+
+                        
+                        break;
+                    case 3:
+
+                        StartCoroutine(GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0));
+                        NumberShower[1].enabled = false;
+                        NextGuideButton.SetActive(false);
+                        GameGuideUI.SetActive(false);
+                        ThrowAMouseArea.enabled = true;
+                        break;
+                    case 4:
+                        //CloseGuideArrows();
+                        CloseGuideTargets();
+                        ActiveNumberShowers(false);
+                        NextGuideButton.SetActive(false);
+                        ThrowAMouseArea.enabled = true;
+                        //StartCoroutine(GuideTargetUI(TE.GetComponent<TargetEquation>().Number, true, 0));
+                        SetCorrectFracIndex(1);
+                        Arrows.Objects[0].SetActive(false);
+                        Arrows.Objects[0].GetComponent<Arrow>().Number.SetActive(false);
+                        TE.ccs[0].RotSpeed = 15;
+
+
+                        
+
+                        break;
+                    case 5:
+
+
+
+                        CloseGuideTargets();
+                        ActiveNumberShowers(false);
+                        NextGuideButton.SetActive(false);
+                        ThrowAMouseArea.enabled = true;
+                        SetCorrectFracIndex(1);
+                        Arrows.Objects[0].SetActive(false);
+                        Arrows.Objects[0].GetComponent<Arrow>().Number.SetActive(false);
+                        TE.ccs[0].RotSpeed = 15;
+
+
+
+                        break;
+                }
+
+                break;
+            case 3:
+
+                switch (LevelNo)
+                {
+                    case 2:
+
+                        CloseGuideArrows();
+                        StartCoroutine(GuideArrowUI(11, false));
+                        GameGuideUI.SetActive(false);
+                        NextGuideButton.SetActive(false);
+
+                        break;
+                    case 4:
+                        TrainingOpResult(true);
+                        TrainingOperationA++;
+                        
+
+
+                        break;
+                    case 5:
+                        TrainingOpResult(false);
+                        TrainingOperationA++;
+                        break;
+                }
+                break;
+            case 4:
+                switch (LevelNo)
+                {
+                    case 2:
+                        NextGuideButton.SetActive(true);
+                        CloseGuideArrows();
+                        CloseGuideTargets();
+                        GameGuideText.text = "Every ball sticked to middle cylinder have a number too. They are equations numbers.";
+                        GameGuideUI.SetActive(true);
+                        break;
+                    case 4:
+                        CloseGuideArrows();
+                        
+                        PlusOrMinus.enabled = false;
+                        NextGuideButton.SetActive(false);
+                        ThrowAMouseArea.enabled = true;
+                        SetCorrectFracIndex(0);
+                        TE.ccs[0].RotSpeed = 15;
+                        
+
+
+
+
+                        break;
+                }
+
+                break;
+            case 5:
+
+                //level4:
+                
+
+
+
+
+                StartCoroutine(GuideArrowUI(11, true));
+                GameGuideUI.SetActive(false);
+                NextGuideButton.SetActive(false);
+
+                break;
+            case 6:
+                //level4:
+                CloseGuideArrows();
+                //SetCorrectFracIndex(1);
+
+
+                NextGuideButton.SetActive(true);
+                GameGuideText.text = "Be careful to the equation, red means minus number.";
+                GameGuideUI.SetActive(true);
+                PlusOrMinus.enabled = false;
+
+
+                
+                
+                break;
+            case 7:
+
+                //level4:
+                CloseGuideArrows();
+                BlueShowed = false;
+                GameGuideUI.SetActive(false);
+
+                StartCoroutine(GuideArrowUI(11, true));
+                NextGuideButton.SetActive(false);
+
+                PlusOrMinus.enabled = false;
+                break;
+        }
+        
+    }
+    private void TrainingOpResult(bool UpdateMinus)
+    {
+        CloseGuideArrows();
+        NextGuideButton.SetActive(false);
+        
+        //operation = " + ";
+        //opSign = 1;
+        if (UpdateMinus)
+        {
+            Arrow CurrentArrow = Arrows.Objects[TrainingOperationA].GetComponent<Arrow>();
+            if(CurrentArrow.ArrowNo.Oparetion == 1)
             {
-                case 1:
-                    //AmmoShowerClose
-                    StartCoroutine(InformTargeting());
-                    StartCoroutine(HowToTArrow());
+                ballsNoTrainingL2 = "-" + ballsNoTrainingL2;
 
-                    StartCoroutine(GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0));
-                    StartCoroutine(GuideTargetUI(TE.Number, false, 1));
-                    GameGuideUI.SetActive(false);
-                    StartCoroutine(BowToAmmo());
-                    break;
-                case 2:
-                    IfWon();
-
-                    ActiveNumberShowers(false);
-                    NextLevelButton.SetActive(true);
-                    break;
-                case 3:
-                    IfWon();
-                    GameGuideUI.SetActive(false);
-                    NextLevelButton.SetActive(true);
-                   
-                    break;
             }
         }
-        else if (GuideCount == 1)
+        int StickedCurrentArrowNo = OldFracNo.UpNo;
+
+        int result = int.Parse(ballsNoTrainingL2) + StickedCurrentArrowNo;
+        NumberShower[2].text = ballsNoTrainingL2 + " + " + stickedNoTrainingL2 + " = " + result;
+        NumberShower[0].enabled = false;
+        NumberShower[1].enabled = false;
+        StartCoroutine(WaitAndBringResult(result));
+
+
+
+    }
+    public void SetCorrectFracIndex(byte NextNumbersArrayIndex)
+    {
+
+        CorrectFracIndex = 0;
+        //if (NextNumbersArrayIndex == 0)
         {
-            switch (LevelNo)
-            {
-                case 2:
-                    CorrectFracIndex = 0;
-                    for (int i = 0; i < EquationNumbers.Count; i++)
-                    {
-                        if (EquationNumbers[NextNumbers[1].Index] == (StickedArrows.Objects[i].GetComponent<Arrow>().ArrowNo))
-                        {
-                            CorrectFracIndex = (byte)StickedArrows.Objects[i].GetComponent<Arrow>().NoOrder;
-                        }
-
-                    }
-                    CloseGuideArrows();
-                    //StartCoroutine(GuideTargetUI(StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number, false, 0));
-
-                    StartCoroutine(BowToAmmo());
-                    PlusOrMinus.enabled = false;
-
-
-                    ThrowAMouseArea.enabled = true;
-                    NextGuideButton.SetActive(false);
-
-
-
-
-
-
-
-
-
-                    break;
-                case 3:
-                    CloseGuideArrows();
-                    NextGuideButton.SetActive(false);
-                    ThrowAMouseArea.enabled = true;
-                    StartCoroutine(GuideTargetUI(TE.GetComponent<TargetEquation>().Number, true, 0));
-                    break;
-            }
-        }
-        else if (GuideCount == 2)
-        {
-
-            //level2:
-            CorrectFracIndex = 0;
+            
             for (int i = 0; i < EquationNumbers.Count; i++)
             {
-                if (EquationNumbers[NextNumbers[0].Index] == (StickedArrows.Objects[i].GetComponent<Arrow>().ArrowNo))
+                if (EquationNumbers[NextNumbers[NextNumbersArrayIndex].Index] == StickedArrows.Objects[i].GetComponent<Arrow>().ArrowNo)
                 {
                     CorrectFracIndex = (byte)StickedArrows.Objects[i].GetComponent<Arrow>().NoOrder;
                 }
 
             }
-            CloseGuideArrows();
-            StartCoroutine(GuideTargetUI(StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number, false, 0));
-
-            StartCoroutine(BowToAmmo());
-            PlusOrMinus.enabled = false;
-
-            //TrainingOperation.enabled = true;
-
-
-            ////optimize edilecek(belki) textten almak yerine asıl sayı olarak alınacak:
-            //string ballsNo = BallsUI.Objects[BallsUI.Next].GetComponentInChildren<TMP_Text>().text;
-            //string stickedNo = FracNoToString(StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().ArrowNo, false, false);
-            //TrainingOperation.text = ballsNo + " + " + stickedNo + " = " + (int.Parse(ballsNo) + int.Parse(stickedNo));
-            //StartCoroutine(GuideArrowUI(0, false, 6, false));
-            //StartCoroutine(GuideArrowUI(1, false, 7, false));
-
-            ThrowAMouseArea.enabled = true;
-            NextGuideButton.SetActive(false);
-
-
-
-
-
-
-
         }
-        else if (GuideCount == 3)
-        {
+        //else
+        //{
+        //    if (CorrectFracIndex == 0)
+        //    {
+        //        CorrectFracIndex = 1;
+        //    }
+        //    else
+        //    {
+        //        CorrectFracIndex = 0;
+        //    }
+        //}
 
-            ////level2:
-            //CloseGuideArrows();
-            //PlusOrMinus.enabled = true;
-            //StartCoroutine(GuideArrowUI(1, false, 0, true));
+        CloseGuideTargets();
+        CloseGuideArrows();
+        StartCoroutine(GuideTargetUI(StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number, false, NextNumbersArrayIndex));
+    }
 
-        }
+    private IEnumerator WaitAndBringResult(int result)
+    {
+        //bekletmek gerçekten gerekli mi?
+        yield return new WaitForSecondsRealtime(0.75f);
+        Arrows.Objects[TrainingOperationA].GetComponent<Arrow>().Number.SetActive(false);
+        Arrows.Objects[TrainingOperationA].SetActive(false);
+        //Debug.Log(Arrows.Objects[TrainingOperationA].GetComponent<Arrow>().Number.GetComponent<TMP_Text>().text);
+        GameObject Number = StickedArrows.Objects[TrainingOperationSA].GetComponent<Arrow>().Number;
 
+        Number.GetComponent<TMP_Text>().text = result.ToString();
+        Number.SetActive(false);
+
+        NumberShower[0].enabled = true;
+
+        NumberShower[0].text = result.ToString();
+
+
+
+        NumberShower[0].rectTransform.localPosition = LetterPos(NumberShower[2], NumberShower[2].text.Length - 1, NumberShower[2].text.Length - 1);
+
+
+        //StartCoroutine(MovableArrowedText(NumberShower[0], Number.GetComponent<RectTransform>().localPosition, Number.GetComponent<TMP_Text>().fontSize * Number.transform.localScale.x));
+        GuideArrowUI679[0] = GuideArrowUI(9, false);
+        StartCoroutine(GuideArrowUI679[0]);
 
 
 
     }
-    
-    
+
     private IEnumerator OutOfAmmoBlink()
     {
         if (!OOABlinking)
@@ -693,205 +979,550 @@ public class Main : MonoBehaviour
         }
         
     }
-    public IEnumerator GuideArrowUI(int SArrowNo,bool lastArrow,byte BackArrowType, bool Colorfull)
+    private IEnumerator[] GuideArrowUI679=new IEnumerator[3];
+    private void CloseGuideArrowUI679()
     {
+        foreach(IEnumerator i in GuideArrowUI679)
+        {
+            if (i != null)
+            {
+
+                StopCoroutine(i);
+            }
+        }
+    }
+    private Vector3 GetMousePos()
+    {
+        if (PlatformTouchScreen)
+        {
+            return Touchscreen.current.position.ReadValue();
+        }
+        else
+        {
+            return Mouse.current.position.ReadValue();
+        }
+        
+    }
+    public struct GuideArrowParams
+    {
+        public byte i;
+        public bool b;
+        public GuideArrowParams(byte i,bool b)
+        {
+            this.i = i;
+            this.b = b;
+        }
+    }
+
+
+    byte firstBlue = 0;
+    bool BlueShowed = false;
+    //şu methodun değer kısmına yazılacak:
+    //RectTransform ArrowHead,RectTransform BackArrow,Vector3 BackArrowV,Vector3 ArrowHeadV,float Space,float MinLengthArrow,float OtherTextFontSize,float fontSizeDif, byte MovableAndStopped, Color col, bool Aiming, byte SArrowNo, bool GoFromStartToEnd
+    //arrowtype yerine de 3 4 tip farklı değer alabilen değer yapılacak int ya da enum olabilir
+    public IEnumerator GuideArrowUI(byte ArrowType, bool OperationColor)
+    {
+
         yield return new WaitForSecondsRealtime(0.01f);
-        //0:Sticked Arrows
-        //1:Cylinder
-        //2:GuideText
-        //3:BowToAmmo
-        Color c = Color.black;
-        switch (Colorfull)
+        int SArrowNo = 0;
+        Color col = Color.black;
+        byte Operation = 0;
+
+        switch (OperationColor)
         {
             case true:
-                c = BlueAddition;
-                byte Operation = StickedArrows.Objects[SArrowNo].GetComponent<Arrow>().ArrowNo.Oparetion;
-                if (Operation == 1)
-                {
-                    c = RedSubtraction;
 
+
+                if (!BlueShowed)
+                {
+                    col = BlueAddition;
+                    Operation = StickedArrows.Objects[0].GetComponent<Arrow>().ArrowNo.Oparetion;
+                    firstBlue = Operation;
+                    BlueShowed = true;
                 }
-                PlusOrMinus.GetComponent<Image>().sprite = PMShower[Operation];
+                else
+                {
+                    col = RedSubtraction;
+                }
+
+
 
                 break;
 
         }
-        GAs[SArrowNo].Arrow.color = c;
-        GAs[SArrowNo].ArrowTop.color = c;
+
+
+        if (ArrowType == 10)//mouse
+        {
+            col = BlueAddition;
+        }
+
+        bool GoFromStartToEnd = false;
         bool Stable = false;
-        Vector3 ArrowHeadV = Vector3.zero;
         RectTransform ArrowHead=null;
-        RectTransform GuideArrowUI = null;
+        RectTransform GuideArrowUI;
         RectTransform BackArrow = null;
         Vector3 BackArrowV = Vector3.zero;
+        Vector3 ArrowHeadV = Vector3.zero;
         float Space = 0.88f;
+        float MinLengthArrow = 50;
+        
+        float OtherTextFontSize=0;
+        float fontSizeDif = 0;
+
+
         byte MovableAndStopped = 0;
         //0 both movable
         //1 just Backarrow movable
         //2 just arrowhead movable
         //3 both stopped
-
-        switch (BackArrowType)
+        
+        switch (ArrowType)
         {
-            case 0:
+            case 13:
+            case 12:
+            case 11:
+                SArrowNo = ArrowType - 11;
                 Arrow a;
-                if (lastArrow)
+                if (OperationColor)
                 {
-                    a = Arrows.Current.GetComponent<Arrow>();
+                    a = StickedArrows.Objects[firstBlue].GetComponent<Arrow>();
+                    if (firstBlue == 0)
+                    {
+                        firstBlue = 1;
+                    }
+                    else
+                    {
+                        firstBlue = 0;
+                    }
                 }
                 else
                 {
                     a = StickedArrows.Objects[SArrowNo].GetComponent<Arrow>();
+                    if (firstBlue == 0)
+                    {
+                        firstBlue = 1;
+                    }
+                    else
+                    {
+                        firstBlue = 0;
+                    }
                 }
-                ArrowHeadV = LetterPos(TE.EquationText, a.TextPlace, a.TextPlace + GetSpaceCountOfNo(a.ArrowNo));
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
-                BackArrow = a.Number.GetComponent<RectTransform>();
-                MovableAndStopped = 1;
-                break;
-            case 1:
-
-                ArrowHeadV = LetterPos(TE.EquationText, 0, GetSpaceCountOfNo(TE.No) - 1);
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
-                BackArrow = TE.Number.GetComponent<RectTransform>();
-                MovableAndStopped = 1;
-                break;
-            case 2:
                 
+                Space = 0.94f;
+
+                ArrowHeadV = LetterPos(TE.EquationText, a.TextPlace, a.TextPlace + GetSpaceCountOfNo(a.ArrowNo));
+                
+                BackArrow = a.Number.GetComponent<RectTransform>();
+                BackArrowV = BackArrow.localPosition;
+                MovableAndStopped = 0;
+                GoFromStartToEnd = true;
+
+                break;
+            //case 0:
+                
+            //    a = StickedArrows.Objects[0].GetComponent<Arrow>();
+                
+            //    ArrowHeadV = LetterPos(TE.EquationText, a.TextPlace, a.TextPlace + GetSpaceCountOfNo(a.ArrowNo));
+                
+            //    BackArrow = a.Number.GetComponent<RectTransform>();
+            //    MovableAndStopped = 0;
+            //    GoFromStartToEnd = true;
+            //    Space = 0.95f;
+            //    break;
+            //case 1:
+
+            //    ArrowHeadV = LetterPos(TE.EquationText, 0, GetSpaceCountOfNo(TE.No) - 1);
+            //    BackArrow = TE.Number.GetComponent<RectTransform>();
+            //    MovableAndStopped = 1;
+            //    break;
+            case 2:
+                //bişey yok
 
                 RectTransform ArrowHeadRect= BallsUI.Current.GetComponent<RectTransform>();
-                ArrowHeadV = ArrowHeadRect.localPosition+ (Vector3)ArrowHeadRect.sizeDelta/2;
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
+                //ArrowHead = BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>();
+                ArrowHeadV = ArrowHeadRect.localPosition + (Vector3)ArrowHeadRect.sizeDelta / 2;
+                //ArrowHeadV = ArrowHead.localPosition;
                 BackArrowV = GameGuideUI.GetComponent<RectTransform>().localPosition+(ArrowHeadV- GameGuideUI.GetComponent<RectTransform>().localPosition)*0.2f;
                 Space = 0.8f;
-                MovableAndStopped = 3;
-                break;
-            case 3:
-                
-                ArrowHead = Arrows.Current.GetComponent<Arrow>().Number.GetComponent<RectTransform>();
-                
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
-                BackArrow = BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>();
-                BackArrowV = BackArrow.localPosition + (Vector3)BackArrow.sizeDelta / 2;
-                Space = 0.7f;
                 MovableAndStopped = 2;
+                GoFromStartToEnd = true;
                 break;
-            case 4:
+            //case 3:
 
-                ArrowHead = NumberShower[0].rectTransform;
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
+            //    SArrowNo = 2;
+            //    ArrowHead = Arrows.Current.GetComponent<Arrow>().Number.GetComponent<RectTransform>();
+                
+            //    BackArrow = BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>();
+            //    BackArrowV = BackArrow.localPosition + (Vector3)BackArrow.sizeDelta / 2;
+            //    Space = 0.7f;
+            //    MovableAndStopped = 2;
+            //    break;
+            case 4:
+                //bişey yok
+                SArrowNo = 0;
+                ArrowHead = NumberShower[SArrowNo/*0*/].rectTransform;
                 BackArrowV = LetterPos(TE.EquationText, TE.EquationText.text.Length - GetSpaceCountOfNo(TE.Equivalent), TE.EquationText.text.Length - 1);
                 Space = 0.8f;
                 MovableAndStopped = 2;
+                GoFromStartToEnd = true;
+                Vector3 WESpace = new Vector3((NumberShower[2].textInfo.characterInfo[0].topRight.x - NumberShower[2].textInfo.characterInfo[0].topLeft.x) / 2f + 20 + (NumberShower[0].textInfo.characterInfo[NumberShower[0].text.Length - 1].topRight.x - NumberShower[0].textInfo.characterInfo[0].topLeft.x) / 2f, 0);
+                Vector2 EqualityPosMid = NumberShower[2].rectTransform.localPosition - WESpace;
+
+                ArrowHeadV = EqualityPosMid;
                 break;
             case 5:
+                //bişey yok
+                SArrowNo = 1;
 
-                ArrowHead = NumberShower[1].rectTransform;
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
+                ArrowHead = NumberShower[SArrowNo/*1*/].rectTransform;
                 BackArrowV = LetterPos(TargetNoText, TargetNoText.text.Length - GetSpaceCountOfNo(TE.Equivalent), TargetNoText.text.Length - 1);
                 Space = 0.8f;
                 MovableAndStopped = 2;
+                GoFromStartToEnd = true;
+                WESpace = new Vector3((NumberShower[2].textInfo.characterInfo[0].topRight.x - NumberShower[2].textInfo.characterInfo[0].topLeft.x) / 2f + 20 + (NumberShower[0].textInfo.characterInfo[NumberShower[0].text.Length - 1].topRight.x - NumberShower[0].textInfo.characterInfo[0].topLeft.x) / 2f, 0);
+                EqualityPosMid = NumberShower[2].rectTransform.localPosition + WESpace;
+
+                ArrowHeadV = EqualityPosMid;
 
                 break;
                 
             case 6:
-                //BackArrow = BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>();
-                BackArrow = Arrows.Current.GetComponent<Arrow>().NoText.GetComponent<RectTransform>();
-                //ArrowHeadV = LetterPos(TrainingOperation,1,0);//eğer ballsUI'da 1 den fazla karakter olursa tam ortaya denk gelmez
-                ArrowHeadV = LetterPos(NumberShower[2], 0, 0);//eğer ballsUI'da 1 den fazla karakter olursa tam ortaya denk gelmez
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
-                BackArrowV = BackArrow.localPosition + (Vector3)BackArrow.sizeDelta / 2;
-                Space = 0.8f;
-                MovableAndStopped = 1;
-                //MovableAndStopped = 3;
+                SArrowNo= 0;
+                BackArrow = Arrows.Objects[TrainingOperationA].GetComponent<Arrow>().NoText.GetComponent<RectTransform>();
 
+                ArrowHead = NumberShower[SArrowNo].rectTransform;
+
+                BackArrowV = BackArrow.localPosition;
+                Space = 0.8f;
+                MovableAndStopped = 2;
+                MinLengthArrow = 20;
+                GoFromStartToEnd = true;
+                
+                OtherTextFontSize = NumberShower[2].fontSize;
+                fontSizeDif = OtherTextFontSize - NumberShower[SArrowNo].fontSize;
+                float EquationFontSizeDif = OtherTextFontSize / NumberShower[SArrowNo].fontSize;
+                WESpace = new Vector3(NumberShower[2].preferredWidth / 2 + /*NumberShower[1]=tek karakter değilse sorun çıkararır*/NumberShower[1].preferredWidth + NumberShower[SArrowNo].preferredWidth / 2 * EquationFontSizeDif, 0);
+
+                EqualityPosMid = NumberShower[2].rectTransform.localPosition - WESpace/*WESpacePreferredWidth*/;
+                ArrowHeadV = EqualityPosMid;
                 break;
             case 7:
-                BackArrow = StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number.GetComponent<RectTransform>();
+                SArrowNo = 1;
+                BackArrow = StickedArrows.Objects[TrainingOperationSA].GetComponent<Arrow>().Number.GetComponent<RectTransform>();
                 //ArrowHeadV = LetterPos(TrainingOperation, TrainingOperation.text.Length - 5, TrainingOperation.text.Length - 5);//eğer StickedArrows'da 1 den fazla karakter olursa tam ortaya denk gelmez
-                ArrowHeadV = LetterPos(NumberShower[2], NumberShower[2].text.Length - 1, NumberShower[2].text.Length - 1);//eğer StickedArrows'da 1 den fazla karakter olursa tam ortaya denk gelmez
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
-                BackArrowV = BackArrow.localPosition + (Vector3)BackArrow.sizeDelta / 2;
+                ArrowHead = NumberShower[SArrowNo].rectTransform;
+                BackArrowV = BackArrow.localPosition;
                 Space = 0.8f;
+                MinLengthArrow = 20;
+                MovableAndStopped = 2;
+                GoFromStartToEnd = true;
 
-                MovableAndStopped = 1;
+                OtherTextFontSize = NumberShower[2].fontSize;
+                fontSizeDif = OtherTextFontSize - NumberShower[SArrowNo].fontSize;
+                EquationFontSizeDif = OtherTextFontSize / NumberShower[SArrowNo].fontSize;
+                WESpace = new Vector3(NumberShower[2].preferredWidth / 2 + /*NumberShower[1]=tek karakter değilse sorun çıkararır*/NumberShower[1].preferredWidth + NumberShower[SArrowNo].preferredWidth / 2* EquationFontSizeDif, 0);
 
+                EqualityPosMid = NumberShower[2].rectTransform.localPosition + WESpace/*WESpacePreferredWidth*/;
+                ArrowHeadV = EqualityPosMid;
+                
+                
                 break;
             case 8:
+
+                a = StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>();
                 BackArrow = StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number.GetComponent<RectTransform>();
-                ArrowHeadV = LetterPos(NumberShower[2], NumberShower[2].text.Length - 1, NumberShower[2].text.Length - 1);//eğer eşit 1 den fazla karakter olursa tam ortaya denk gelmez
-                GuideArrowUI = GAs[SArrowNo].Arrow.rectTransform;
                 BackArrowV = BackArrow.localPosition + (Vector3)BackArrow.sizeDelta / 2;
+                Space = 0.92f;
+                ArrowHeadV = LetterPos(TE.EquationText, a.TextPlace, a.TextPlace + GetSpaceCountOfNo(a.ArrowNo));
+                MovableAndStopped = 0;
+                GoFromStartToEnd = true;
+                break;
+            case 9:
+                SArrowNo = 0;
+                ArrowHead = NumberShower[SArrowNo].rectTransform;
+                BackArrowV = NumberShower[SArrowNo].rectTransform.localPosition;
                 Space = 0.8f;
 
+                MovableAndStopped = 2;
+                GoFromStartToEnd = true;
+                GameObject n = StickedArrows.Objects[TrainingOperationSA].GetComponent<Arrow>().Number;
+                OtherTextFontSize = n.GetComponent<TMP_Text>().fontSize*n.transform.localScale.x;
+                ArrowHeadV = n.GetComponent<RectTransform>().localPosition;
+                fontSizeDif = OtherTextFontSize -NumberShower[SArrowNo].fontSize;
+                break;
+            case 10:
+
+
+
+
+                ArrowHeadV = mouseStartedPos;
+                BackArrowV = mouseStartedPos;
                 MovableAndStopped = 1;
+
+                Space = 1;
+                
 
                 break;
 
         }
-        RectTransform TopArrow = GAs[SArrowNo].ArrowTop.rectTransform;
+        GuideArrow GA;
 
+        if (ArrowType == 10)
+        {
+            GA = AimingGA;
+
+        }
+        else
+        {
+            GA = GAs[SArrowNo];
+        }
+        GA.Arrow.color = col;
+        GA.ArrowTop.color = col;
+        RectTransform TopArrow = GA.ArrowTop.rectTransform;
+
+
+        GuideArrowUI = GA.Arrow.rectTransform;
+
+
+
+        
+        Vector2 EndPos=Vector2.zero;
+        if (GoFromStartToEnd)
+        {
+            EndPos = ArrowHeadV;
+            ArrowHeadV = BackArrowV;
+            
+        }
 
         if (MovableAndStopped != 2)
         {
-            GAs[SArrowNo].Arrow.enabled = true;
-            GAs[SArrowNo].ArrowTop.enabled = true;
+            GA.Arrow.enabled = true;
+            GA.ArrowTop.enabled = true;
+            
         }
-        GAs[SArrowNo].Active = true;
-        GAs[SArrowNo].Arrow.rectTransform.sizeDelta = new Vector2(0, GAs[SArrowNo].Arrow.rectTransform.sizeDelta.y);
-        while (GAs[SArrowNo].Active)
+
+        float StartEndSpeed = 1;
+        float StartToEndPos = 0;
+
+
+        GA.Active = true;
+        GuideArrowUI.sizeDelta = new Vector2(0, GA.Arrow.rectTransform.sizeDelta.y);
+        float time = 0;
+        while (GA.Active)
         {
-            yield return new WaitForSecondsRealtime(0.01f);
-            switch (MovableAndStopped)
+            yield return new WaitForSeconds(0.005f);
+            time += Time.deltaTime;
+            if (time > 0.01f)
             {
-                case 1:
+                time = 0;
 
-                    BackArrowV = BackArrow.localPosition;
-                    break;
-                case 2:
-                    ArrowHeadV = ArrowHead.localPosition;
-                    if (GuideArrowUI.sizeDelta.x > 50)
+                switch (MovableAndStopped)
+                {
+                    case 0:
+                        if (!GoFromStartToEnd)
+                        {
+                            ArrowHeadV = ArrowHead.localPosition;
+
+                        }
+                        BackArrowV = BackArrow.localPosition;
+
+                        break;
+                    case 1:
+                        if (BackArrow != null)
+                        {
+
+                            BackArrowV = BackArrow.localPosition;
+                        }
+                        else
+                        {
+                            
+                            BackArrowV = GetMousePos();
+                            Vector2 Between = ((Vector2)BackArrowV - (Vector2)ArrowHeadV) * (1 - Space) / 2;
+
+                            GuideArrowUI.position = (Vector2)ArrowHeadV + Between;
+                            TopArrow.position = GuideArrowUI.position;
+                            float Dis = Vector2.Distance(BackArrowV, ArrowHeadV) * Space * CanvasScalerRatio;
+                            if (Dis > MaxFingerSlideDis)
+                            {
+                                Dis = MaxFingerSlideDis;
+                            }
+                            GuideArrowUI.sizeDelta = new Vector2(Dis, GuideArrowUI.sizeDelta.y);
+
+
+                        }
+                        break;
+                    case 2:
+                        
+                        if(!GoFromStartToEnd)
+                        {
+                            ArrowHeadV = ArrowHead.localPosition;
+                            
+                        }
+                        
+                        if (GuideArrowUI.sizeDelta.x > MinLengthArrow && GA.Active)
+                        {
+
+                            GA.Arrow.enabled = true;
+                            GA.ArrowTop.enabled = true;
+                        }
+                        break;
+                    case 3:
+                        Stable = true;
+                        break;
+                }
+
+
+                
+
+                if (ArrowType != 10)
+                {
+                    
+                    if (GoFromStartToEnd)
                     {
+                        float FixedSpeed = StartEndSpeed * Time.deltaTime;
+                        if (StartEndSpeed != 0)
+                        {
+                            ArrowHeadV = BackArrowV + ( (Vector3)EndPos- BackArrowV) * StartToEndPos;
+                            StartToEndPos += FixedSpeed;
+                        }
+                        
 
-                        GAs[SArrowNo].Arrow.enabled = true;
-                        GAs[SArrowNo].ArrowTop.enabled = true;
+                        if (ArrowType == 4 || ArrowType == 5 || ArrowType == 6 || ArrowType == 7||ArrowType==9)
+                        {
+                            ArrowHead.anchoredPosition = ArrowHeadV;
+                            if (OtherTextFontSize != 0)
+                            {
+                                
+                                NumberShower[SArrowNo].fontSize += fontSizeDif * FixedSpeed;
+                                
+                            }
+
+                        }
+                        if (StartToEndPos>=1)
+                        {
+                            if(StartEndSpeed != 0)
+                            {
+                                if (ArrowType == 6 || ArrowType == 7)
+                                {
+                                    ArrowHead.anchoredPosition = EndPos;
+                                    NumberShower[SArrowNo].fontSize = OtherTextFontSize;
+                                }
+                                if (!(ArrowType == 4 || ArrowType == 5))
+                                {
+
+                                    NextGuideButton.SetActive(true);
+                                }
+                            }
+                            
+                            if (MovableAndStopped == 0)
+                            {
+
+                                if (StartEndSpeed != 0)
+                                {
+                                    if (col == BlueAddition)
+                                    {
+                                        PlusOrMinus.sprite = PMShower[0];
+                                        PlusOrMinus.enabled = true;
+                                    }
+                                    else if (col == RedSubtraction && ArrowType == 11)
+                                    {
+                                        PlusOrMinus.sprite = PMShower[1];
+                                        PlusOrMinus.enabled = true;
+                                    }
+                                }
+
+                                StartEndSpeed = 0;
+                            }
+                            else
+                            {
+                                GA.Active = false;
+
+                            }
+
+
+                            if (ArrowType == 11 || ArrowType == 12 || ArrowType == 13)
+                            {
+                                
+
+                                StartEndSpeed = 0;
+                            }
+                            
+                            
+                            
+                        }
+                        
                     }
+                    Vector2 Between = ((Vector2)BackArrowV - (Vector2)ArrowHeadV) * (1 - Space) / 2;
+                    
+                    GuideArrowUI.localPosition = (Vector2)ArrowHeadV + Between;
+                    TopArrow.localPosition = GuideArrowUI.localPosition;
+                    GuideArrowUI.sizeDelta = new Vector2(Vector2.Distance(BackArrowV, ArrowHeadV)* Space, GuideArrowUI.sizeDelta.y);
+                
+                }
 
+                
+
+
+                Vector3 relative = ArrowHeadV - BackArrowV;
+
+                float angle = Mathf.Atan2(relative.y, relative.x) * Mathf.Rad2Deg + 180;
+                GuideArrowUI.rotation = Quaternion.Euler(0, 0, angle);
+                TopArrow.rotation = Quaternion.Euler(0, 0, angle + 90);
+                if (Stable)
+                {
                     break;
-                case 3:
-                    Stable = true;
-                    break;
+                }
+                
+
+
+
+                //hedefe ulaşınca durdurulabilecek var mı
+
             }
-            Vector2 Between = ((Vector2)BackArrowV - (Vector2)ArrowHeadV) * (1 - Space) / 2;
 
-            GuideArrowUI.localPosition = (Vector2)ArrowHeadV + Between;
-            TopArrow.localPosition = GuideArrowUI.localPosition;
-
-
-
-            GuideArrowUI.sizeDelta = new Vector2(Vector2.Distance(BackArrowV, ArrowHeadV) * Space, GuideArrowUI.sizeDelta.y);
-
-            Vector3 relative = ArrowHeadV - BackArrowV;
-
-            float angle = Mathf.Atan2(relative.y, relative.x) * Mathf.Rad2Deg + 180;
-            GuideArrowUI.rotation = Quaternion.Euler(0, 0, angle);
-            TopArrow.rotation = Quaternion.Euler(0, 0, angle + 90);
-            if (Stable)
-            {
-                break;
-            }
-            else if (!GAs[SArrowNo].Active)
-            {
-
-                GAs[SArrowNo].Arrow.enabled = false;
-                GAs[SArrowNo].ArrowTop.enabled = false;
-            }
-            //4,5 için hedefe ulaşınca durdurulucak
         }
+        //Debug.Log("GuideArrowUI Finished");
+        yield return new WaitForSecondsRealtime(0.005f);
         
+        if (!WonShowerReaching)
+        {
+            
+            if (ArrowType == 4 || ArrowType == 5)
+            {
+                NumberShower[SArrowNo].rectTransform.localPosition = EndPos;
+            }
+            if (ArrowType == 6 || ArrowType == 7)
+            {
+                
+                NextGuideButton.SetActive(true);
+            }
+            if (ArrowType == 9)
+            {
+                NumberShower[0].enabled = false;
+                GAs[0].Active = false;
+                StickedArrows.Objects[TrainingOperationSA].GetComponent<Arrow>().Number.SetActive(true);
+                GAs[0].Arrow.enabled = false;
+                GAs[0].ArrowTop.enabled = false;
+                NextGuideButton.SetActive(true);
+                //StickedArrows.Objects[TrainingOperationSA].GetComponent<Arrow>().ArrowNo = CurrentFracNo;
+
+                
+
+                TE.EquationUpdate(0, false, false);
+                
+            }
+            if (ArrowType == 8)
+            {
+                NextGuideButton.SetActive(true);
+            }
+        }
+       
     }
     
     private void NewLevel()
     {
+        
         RestartButImage.color =RestartButColor;
         TE.LevelStart();
         ThrowAMouseArea.enabled = true;
@@ -912,25 +1543,31 @@ public class Main : MonoBehaviour
         EquationNumbers.Clear();
         Levels();
         TE.SetNo();
-
+        MinThrowForArrows = (ushort)(MinThrow + 1);
 
         Arrows.RestartArrows(ArrowsParent.transform);
-        Arrows.SetReadyCount(MinThrow);
+        Arrows.SetReadyCount(MinThrowForArrows);
+        Arrows.GetObject(false);
+        
         StickedArrows.RestartArrows(ArrowsParent.transform);
         StickedArrows.SetReadyCount(FBallCount);
         ArrowPath.Next = 0;
 
         StickArrows();
+
+        CurrentBlueCount = 0;
+        CurrentRedCount = 0;
         SetNextNumbers();
         NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Next";
 
 
-
+        
         Won.SetActive(false);
         CalculateEquation();
 
 
         TargetAndEquivalentSame();
+        
     }
     private void TargetAndEquivalentSame()
     {
@@ -959,7 +1596,8 @@ public class Main : MonoBehaviour
             NextNumbers[i] = new IncompleteNumber();
             IncompleteNumber icn = NextNumbers[i];
             icn.Index = ENumbersIndexes[RandomNo];
-            icn.No = RandomFrac(ArrowOperation, NoRange1, NoRange2);
+            icn.No = RandomFrac(2, NoRange1, NoRange2);
+            //icn.No.Oparetion = 1;
             ENumbersIndexes.RemoveAt(RandomNo);
 
 
@@ -969,11 +1607,81 @@ public class Main : MonoBehaviour
 
             Color color = Color.white;
             //bu methodun aynısı setballda var optimize edilecek:
-            switch (NextNumbers[i].No.Oparetion)
-            {
-                case 0: color = BlueAddition; break;
-                case 1: color = RedSubtraction; break;
-            }
+
+
+
+
+
+
+
+            //silinecek:
+            //if (ArrowOperation > 1)
+            //{
+
+            //    switch (NextNumbers[i].No.Oparetion)
+            //    {
+            //        case 0:
+            //            if (ArrowBlueCount <= CurrentBlueCount)
+            //            {
+            //                color = RedSubtraction;
+            //                NextNumbers[i].No.Oparetion = 1;
+
+            //            }
+            //            else
+            //            {
+
+            //                color = BlueAddition;
+
+            //                NextNumbers[i].No.Oparetion = 0;
+            //                CurrentBlueCount++;
+            //            }
+            //            break;
+
+            //        case 1:
+
+            //            if (MinThrow - ArrowBlueCount <= CurrentRedCount)
+            //            {
+            //                color = BlueAddition;
+
+            //                NextNumbers[i].No.Oparetion = 0;
+            //            }
+            //            else
+            //            {
+            //                color = RedSubtraction;
+
+
+            //                NextNumbers[i].No.Oparetion = 1;
+            //                CurrentRedCount++;
+            //            }
+            //            break;
+            //    }
+
+            //}
+            //else
+            //{
+            //    color = BlueAddition;
+
+
+            //    NextNumbers[i].No.Oparetion = 0;
+            //}
+
+
+
+
+
+            (NextNumbers[i].No.Oparetion, color) = SetColors(NextNumbers[i].No.Oparetion, ArrowOperation, ArrowBlueCount, MinThrow);
+
+
+
+
+
+
+
+            //switch (NextNumbers[i].No.Oparetion)
+            //{
+            //    case 0: color = BlueAddition; break;
+            //    case 1: color = RedSubtraction; break;
+            //}
             NextBall.GetComponent<Image>().color = color;
             //BallUIParent şu an da fullscreen, fullscreen olmayıp bu pozisyon yeniden ayarlanacak:
             NextBall.GetComponent<RectTransform>().anchoredPosition = new Vector2(NextBall.GetComponent<RectTransform>().sizeDelta.x * (NextNumbers.Length - i - 1), 0);
@@ -998,6 +1706,60 @@ public class Main : MonoBehaviour
             
         //}
     }
+    private (byte,Color) SetColors(byte operation, byte OperationType,sbyte BlueCount, ushort Count)
+    {
+        Color c = Color.white;
+        if (OperationType > 1)
+        {
+
+            switch (operation)
+            {
+                case 0:
+                    if (BlueCount <= CurrentBlueCount)
+                    {
+                        c = RedSubtraction;
+                        operation = 1;
+
+                    }
+                    else
+                    {
+
+                        c = BlueAddition;
+
+                        operation = 0;
+                        CurrentBlueCount++;
+                    }
+                    break;
+
+                case 1:
+
+                    if (Count - BlueCount <= CurrentRedCount)
+                    {
+                        c = BlueAddition;
+
+                        operation = 0;
+                    }
+                    else
+                    {
+                        c = RedSubtraction;
+
+
+                        operation = 1;
+                        CurrentRedCount++;
+                    }
+                    break;
+            }
+
+        }
+        else
+        {
+            c = BlueAddition;
+
+
+            operation = 0;
+        }
+        return (operation,c);
+    }
     private void StickArrows()
     {
         for (int i = 0; i < FBallCount; i++)
@@ -1017,13 +1779,14 @@ public class Main : MonoBehaviour
             
         }
     }
-    private void LevelValues(byte ArrowOperation, byte StickArrowOperation, ushort MinThrow, ushort FBallCount, sbyte BlueCount, short NoRange1, short NoRange2)
+    private void LevelValues(byte ArrowOperation, byte StickArrowOperation, ushort MinThrow, ushort FBallCount, sbyte StickedBlueCount, sbyte ArrowBlueCount, short NoRange1, short NoRange2)
     {
         this.ArrowOperation = ArrowOperation;
         this.StickArrowOperation = StickArrowOperation;
         this.MinThrow = MinThrow;
         this.FBallCount = FBallCount;
-        this.BlueCount = BlueCount;
+        this.StickedBlueCount = StickedBlueCount;
+        this.ArrowBlueCount = ArrowBlueCount;
         this.NoRange1 = NoRange1;
         this.NoRange2 = NoRange2;
 
@@ -1123,7 +1886,7 @@ public class Main : MonoBehaviour
                 {
                     
                     case 1:
-                        LevelValues(1, 2, 1, 2, 1, 1, 5);
+                        LevelValues(1, 2, 1, 2, 1,0, 1, 5);
                         TE.AddRT(4, 1);
                         TE.AddCC(1, 0, 20, 1, 0);
                         TE.AddRT(4, 1);
@@ -1131,7 +1894,7 @@ public class Main : MonoBehaviour
                         TE.AddRT(4, 1);
                         break;
                     case 2:
-                        LevelValues(1, 2, 1, 3, 1, 1, 5);
+                        LevelValues(1, 2, 1, 3, 1, 1, 1, 5);
                         TE.AddRT(4, 0);
                         TE.AddCC(1, 0, 30, 1, 0);
                         TE.AddRT(4, 4);
@@ -1140,7 +1903,7 @@ public class Main : MonoBehaviour
                         break;
                     case 3:
 
-                        LevelValues(1, 2, 2, 2, 1, 1, 5);
+                        LevelValues(1, 2, 2, 2, 1, 1, 1, 5);
                         //justRot(RT ile CC sayısı aynı):
                         TE.AddRT(4, 2);
                         TE.AddCC(0, 0, 40, 1, 0);
@@ -1150,26 +1913,26 @@ public class Main : MonoBehaviour
                         break;
                     case 4:
 
-                        LevelValues(1, 2, 2, 2, 1, 1, 5);
+                        LevelValues(1, 2, 2, 2, 1, 1, 1, 5);
                         TE.AddRT(3, 1.25f);
                         TE.AddCC(1.5f, 0, 25, 1, 0);
                         TE.AddRT(4, 1.25f);
                         break;
                     case 5:
-                        LevelValues(1, 2, 1, 1, 0, 1, 5);
+                        LevelValues(1, 2, 1, 1, 0, 1, 1, 5);
                         TE.AddRT(4, 0);
                         TE.AddCC(1, 0, 55, 1, 0);
                         TE.AddRT(5, 0);
                         break;
                     case 6:
 
-                        LevelValues(1, 2, 2, 2, 1, 1, 5);
+                        LevelValues(1, 2, 2, 2, 1, 1, 1, 5);
                         TE.AddRT(1, 0);
                         TE.AddCC(0.7f, 0, 60, -1, 0);
                         TE.AddRT(8, 0);
                         break;
                     case 7:
-                        LevelValues(1, 2, 3, 3, 2, 1, 6);
+                        LevelValues(1, 2, 3, 3, 2, 1, 1, 6);
                         TE.AddRT(0, 0);
                         TE.AddCC(1, 0, 32, 1, 0);
 
@@ -1179,15 +1942,15 @@ public class Main : MonoBehaviour
                         TE.AddRT(8, 0);
                         break;
                     case 8:
-                        LevelValues(1, 2, 3, 3, 2, 1, 5);
+                        LevelValues(1, 2, 3, 3, 2, 1, 1, 5);
                         
                         TE.AddRT(3, 1.2f);
                         TE.AddCC(1.5f, 0, 50, 1, 0);
                         TE.AddRT(5, 1.2f);
-
+                        
                         break;
                     case 9:
-                        LevelValues(1, 2, 3, 3, 2, 1, 5);
+                        LevelValues(1, 2, 3, 3, 2, 1, 1, 5);
 
                         TE.AddRT(0, 1.5f);
                         TE.AddCC(0.5f, 0, 60, 1, 0);
@@ -1195,7 +1958,7 @@ public class Main : MonoBehaviour
                         break;
                     case 10:
 
-                        LevelValues(1, 2, 3, 3, 2, 1, 7);
+                        LevelValues(1, 2, 3, 3, 2, 1, 1, 7);
 
                         TE.AddRT(0, 0.5f);
                         TE.AddCC(3, 0, 60, 1, 0);
@@ -1207,7 +1970,7 @@ public class Main : MonoBehaviour
                         //üzerinden geçilecek:
                     case 11:
 
-                        LevelValues(1, 2, 2, 5, 3, 1, 7);
+                        LevelValues(1, 2, 2, 5, 3, 1, 1, 7);
 
                         TE.AddRT(0, 1.5f);
                         TE.AddCC(1.5f, 0, 45, 1, 0);
@@ -1220,33 +1983,33 @@ public class Main : MonoBehaviour
                         break;
                     case 12:
 
-                        LevelValues(1, 2, 2, 2, 1, 1, 7);
+                        LevelValues(1, 2, 2, 2, 1, 1, 1, 7);
                         TE.AddRT(8, 2);
-                        TE.AddCC(2, 0, 60, 1, 0);
+                        TE.AddCC(2/*1.4f*/, 0, 60, 1, 0);
                         TE.AddRT(2, 0);
 
                         break;
                     case 13:
 
-                        LevelValues(1, 2, 2, 3, 1, 1, 7);
+                        LevelValues(1, 2, 2, 3, 1, 1, 1, 7);
                         TE.AddRT(2, 0);
-                        TE.AddCC(4, 0, 80, 1, 0);
+                        TE.AddCC(4, 0, /*80*/70, 1, 0);
                         TE.AddRT(6, 0);
-                        TE.AddCC(1, 0, 40, -1, 0);
+                        TE.AddCC(1, 0, /*40*/30, -1, 0);
                         TE.AddRT(8, 0);
 
                         break;
                     case 14:
 
-                        LevelValues(1, 2, 2, 5, 4, 1, 7);
+                        LevelValues(1, 2, 2, 5, 4, 1, 1, 7);
                         TE.AddRT(5, 0);
-                        TE.AddCC(0, 0, 75, 1, 0);
+                        TE.AddCC(0, 0, 75/*65*/, 1, 0);
                         TE.AddRT(5, 0);
 
                         break;
                     case 15:
 
-                        LevelValues(1, 2, 2, 3, 2, 1, 7);
+                        LevelValues(1, 2, 2, 3, 2, 1, 1, 7);
                         TE.AddRT(6, 0);
                         TE.AddCC(2.5f, 0, 60, 1, 0);
                         TE.AddRT(1, 0);
@@ -1256,15 +2019,15 @@ public class Main : MonoBehaviour
                         break;
                     case 16:
 
-                        LevelValues(1, 2, 3, 3, 1, 0, 12);
+                        LevelValues(1, 2, 3, 3, 1, 1, 0, 12);
                         TE.AddRT(2, 0);
-                        TE.AddCC(2, 0, 50, -1, 0);
+                        TE.AddCC(2, 0, /*50*/70, -1, 0);
                         TE.AddRT(5, 0);
 
                         break;
                     case 17:
 
-                        LevelValues(1, 2, 3, 4, 2, 0, 12);
+                        LevelValues(1, 2, 3, 4, 2, 1, 0, 12);
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 85, 1, 0);
                         TE.AddRT(4, 0);
@@ -1272,78 +2035,86 @@ public class Main : MonoBehaviour
                         break;
                     case 18:
 
-                        LevelValues(1, 2, 2, 3, 2, 0, 15);
+                        LevelValues(1, 2, 2, 3, 2, 1, 0, 15);
                         TE.AddRT(2, 0);
-                        TE.AddCC(0.4f, 0, 90, 1, 0);
+                        TE.AddCC(0.6f/*0.4f*/, 0, 110/*90*/, 1, 0);
                         TE.AddRT(3, 0);
 
                         break;
                     case 19:
 
-                        LevelValues(1, 2, 3, 5, 2, 0, 15);
+                        LevelValues(1, 2, 3, 5, 2, 1, 0, 15);
                         TE.AddRT(0, 0);
-                        TE.AddCC(0, 0, 100, 1, 0);
+                        TE.AddCC(0, 0, /*110*/130, 1, 0);
                         TE.AddRT(0, 0);
 
                         break;
                     case 20:
 
-                        LevelValues(1, 2, 3, 3, 1, 0, 15);
+                        LevelValues(1, 2, 3, 3, 1, 1, 0, 15);
                         TE.AddRT(5, 0);
-                        TE.AddCC(3.5f, 0, 35, 1, 0);
+                        TE.AddCC(/*3.5f*/4, 0, 35, 1, 0);
                         TE.AddRT(6, 0);
 
                         break;
-                    case 21:
 
-                        LevelValues(1, 2, 2, 4, 3, 0, 15);
-                        TE.AddRT(5, 0);
-                        TE.AddCC(1.5f, 0, 70, 1, 0);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(1.5f, 0, 70, 1, 0);
-                        TE.AddRT(7, 0);
-                        TE.AddCC(1.5f, 0, 70, 1, 0);
-                        TE.AddRT(8, 0);
 
-                        break;
-                    case 22:
 
-                        LevelValues(1, 2, 3, 4, 2, 0, 13);
-                        TE.AddRT(5, 0);
-                        TE.AddCC(1, 0, 50, 1, 0);
-                        TE.AddRT(3, 0);
 
-                        break;
-                    case 23:
 
-                        LevelValues(1, 2, 2, 5, 4, 0, 15);
-                        TE.AddRT(2, 0);
-                        TE.AddCC(2, 0, 65, 1, 0);
-                        TE.AddRT(4, 0);
 
-                        break;
-                    case 24:
 
-                        LevelValues(1, 2, 2, 3, 2, 0, 15);
-                        TE.AddRT(0, 0);
-                        TE.AddCC(1.7f, 0, 90, -1, 0);
-                        TE.AddRT(2, 0);
-                        TE.AddCC(1.7f, 0, 45, 1, 0);
-                        TE.AddRT(8, 0);
 
-                        break;
-                    case 25:
+                    //case 21:
 
-                        LevelValues(1, 2, 2, 3, 2, 0, 15);
-                        TE.AddRT(0, 3);
-                        TE.AddCC(2.5f, 0, 70, -1, 0);
-                        TE.AddRT(1, 0);
-                        TE.AddCC(2.5f, 0, 70, -1, 0);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(2.5f, 0, 70, -1, 0);
-                        TE.AddRT(3, 3);
+                    //    LevelValues(1, 2, 2, 4, 3, 1, 0, 15);
+                    //    TE.AddRT(5, 0);
+                    //    TE.AddCC(1.5f, 0, 70, 1, 0);
+                    //    TE.AddRT(4, 0);
+                    //    TE.AddCC(1.5f, 0, 70, 1, 0);
+                    //    TE.AddRT(7, 0);
+                    //    TE.AddCC(1.5f, 0, 70, 1, 0);
+                    //    TE.AddRT(8, 0);
 
-                        break;
+                    //    break;
+                    //case 22:
+
+                    //    LevelValues(1, 2, 3, 4, 2, 1, 0, 13);
+                    //    TE.AddRT(5, 0);
+                    //    TE.AddCC(1, 0, 50, 1, 0);
+                    //    TE.AddRT(3, 0);
+
+                    //    break;
+                    //case 23:
+
+                    //    LevelValues(1, 2, 2, 5, 4, 1, 0, 15);
+                    //    TE.AddRT(2, 0);
+                    //    TE.AddCC(2, 0, 65, 1, 0);
+                    //    TE.AddRT(4, 0);
+
+                    //    break;
+                    //case 24:
+
+                    //    LevelValues(1, 2, 2, 3, 2, 1, 0, 15);
+                    //    TE.AddRT(0, 0);
+                    //    TE.AddCC(1.7f, 0, 90, -1, 0);
+                    //    TE.AddRT(2, 0);
+                    //    TE.AddCC(1.7f, 0, 45, 1, 0);
+                    //    TE.AddRT(8, 0);
+
+                    //    break;
+                    //case 25:
+
+                    //    LevelValues(1, 2, 2, 3, 2, 1, 0, 15);
+                    //    TE.AddRT(0, 3);
+                    //    TE.AddCC(2.5f, 0, 70, -1, 0);
+                    //    TE.AddRT(1, 0);
+                    //    TE.AddCC(2.5f, 0, 70, -1, 0);
+                    //    TE.AddRT(4, 0);
+                    //    TE.AddCC(2.5f, 0, 70, -1, 0);
+                    //    TE.AddRT(3, 3);
+
+                    //    break;
                         
                 }
 
@@ -1352,28 +2123,27 @@ public class Main : MonoBehaviour
                 CloseTrainingUIs();
                 switch (CurrentLevelType.LevelNo)
                 {
-                    //numara yanıp sönmelere bakılacak
                     case 1:
-                        LevelValues(1, 2, 1, 1, 0, 1, 10);
+                        LevelValues(1, 2, 1, 1, 0, 1, 1, 10);
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 15, 1, 0);
                         TE.AddRT(4, 0);
                         break;
                     case 2:
-                        LevelValues(1, 2, 1, 4, 1, 1, 10);
+                        LevelValues(1, 2, 1, 4, 1, 1, 1, 10);
 
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 30, 1, 0);
                         TE.AddRT(4, 0);
                         break;
                     case 3:
-                        LevelValues(1, 2, 2, 3, 2, 1, 10);
+                        LevelValues(1, 2, 2, 3, 2, 1, 1, 10);
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 30, 1, 0);
                         TE.AddRT(4, 0);
                         break;
                     case 4:
-                        LevelValues(1, 2, 2, 3, 1, 1, 10);
+                        LevelValues(1, 2, 2, 3, 1, 1, 1, 10);
                         TE.AddRT(4, 3);
                         TE.AddCC(0, 0, 30, 1, 0);
                         TE.AddRT(4, 2);
@@ -1381,13 +2151,13 @@ public class Main : MonoBehaviour
                         TE.AddRT(4, 2);
                         break;
                     case 5:
-                        LevelValues(1, 2, 3, 3, 2, 1, 9);
+                        LevelValues(1, 2, 3, 3, 2, 1, 1, 9);
                         TE.AddRT(3, 5);
                         TE.AddCC(1, 0, 35, -1, 0);
                         TE.AddRT(5, 3);
                         break;
                     case 6:
-                        LevelValues(1, 2, 2, 4, 2, 1, 13);
+                        LevelValues(1, 2, 2, 4, 2, 1, 1, 13);
                         TE.AddRT(2, 0.5f);
                         TE.AddCC(0, 0, 110, -1, 0);
                         TE.AddRT(2, 3);
@@ -1395,21 +2165,21 @@ public class Main : MonoBehaviour
                         TE.AddRT(2, 3);
                         break;
                     case 7:
-                        LevelValues(1, 2, 3, 4, 2, 1, 10);
+                        LevelValues(1, 2, 3, /*4*/3, 2, 1, 1, 10);
                         TE.AddRT(6, 1);
-                        TE.AddCC(0, 0, 100, 1, 0);
+                        TE.AddCC(0, 0, /*100*/90, 1, 0);
                         TE.AddRT(6, 4);
                         TE.AddCC(0, 0, 30, 1, 0);
                         TE.AddRT(6, 4);
                         break;
                     case 8:
-                        LevelValues(1, 2, 2, 4, 1, 0, 18);
+                        LevelValues(1, 2, 2, 4, 1, 1, 0, 12/*18*/);
                         TE.AddRT(7, 0);
                         TE.AddCC(0, 0, 40, 1, 0);
                         TE.AddRT(7, 0);
                         break;
                     case 9:
-                        LevelValues(1, 2, 3, 3, 2, 0, 15);
+                        LevelValues(1, 2, 3, 3, 2, 1, 0, 15);
                         TE.AddRT(2, 0);
                         TE.AddCC(3, 0, 40, 1, 0);
                         TE.AddRT(4, 5);
@@ -1417,102 +2187,117 @@ public class Main : MonoBehaviour
                         TE.AddRT(6, 0);
                         break;
                     case 10:
-                        LevelValues(1, 2, 2, 5, 3, 0, 22);
+                        LevelValues(1, 2, 2, 5, 3, 1, 0, 22);
                         TE.AddRT(4, 2.5f);
                         TE.AddCC(0.25f, 0, 30, -1, 0);
                         TE.AddRT(5, 2.5f);
                         break;
                         //üzerinden geçilecek:(hepsi iyi gibi math için)
                     case 11:
-                        LevelValues(1, 2, 1, 6, 4, 0, 22);
+                        LevelValues(1, 2, 2/*1*/, 6, 4, 2/*1*/, 0, 22);
                         TE.AddRT(1, 3);
                         TE.AddCC(0.7f, 0, 30, 1, 0);
                         TE.AddRT(7, 3);
                         break;
                     case 12:
-                        LevelValues(1, 2, 3, 4, 1, 1, 14);
+                        LevelValues(1, 2, 3, 4, 1, 1, 1, 14);
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 35, 1, 0);
                         TE.AddRT(4, 0);
                         break;
                     case 13:
-                        LevelValues(1, 2, 2, 5, 4, 5, 20);
+                        LevelValues(1, 2, 2, 5, 4, 1, 5, 20);
                         TE.AddRT(7, 0);
                         TE.AddCC(0.7f, 0, 35, -1, 0);
                         TE.AddRT(8, 0);
                         break;
                     case 14:
-                        LevelValues(1, 2, 3, 3, 2, 1, 20);
+                        LevelValues(1, 2, 3, /*3*/4, 1/*2*/, 1, 1, 20);
                         TE.AddRT(0, 0);
                         TE.AddCC(1.5f, 0, 25, 1, 0);
                         TE.AddRT(5, 0);
                         break;
                     case 15:
-                        LevelValues(2, 2, 2, 3, 2, 1, 10);
+                        LevelValues(2, 2, 2, 3, 2, 1, 1, 10);
                         TE.AddRT(3, 0);
                         TE.AddCC(0, 0, 35, 1, 0);
                         TE.AddRT(3, 0);
                         break;
+
+
                     case 16:
-                        LevelValues(2, 2, 2, 3, 2, 1, 20);
+                        LevelValues(2, 2, 2, 3, 2, 1, 1, 25/*20*/);
                         TE.AddRT(0, 0);
-                        TE.AddCC(1, 0, 45, 1, 0);
+                        TE.AddCC(/*1*/1.5f, 0, 45, 1, 0);
                         TE.AddRT(3, 0);
                         break;
                     case 17:
-                        LevelValues(2, 2, 3, 3, 1, 0, 20);
+                        LevelValues(2, 2, 3, 3, 1, 1, 0, /*30*/20);
                         TE.AddRT(4, 3.5f);
                         TE.AddCC(5, 0, 40, -1, 0);
                         TE.AddRT(6, 3.5f);
                         break;
                     case 18:
-                        LevelValues(1, 2, 3, 3, 1, 0, 30);
+                        LevelValues(1, 2, 3, 3, 1, 1, 0, 30);
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 30, -1, 0);
                         TE.AddRT(4, 0);
                         break;
                     case 19:
-                        LevelValues(1, 2, 2, 3, 1, 0, 25);
+                        LevelValues(/*2*/1, 2, 2, 3, 1, 1, 0, 25);
                         TE.AddRT(8, 0);
-                        TE.AddCC(0, 0, 50, 1, 0);
+                        TE.AddCC(0, 0, /*50*/60, 1, 0);
                         TE.AddRT(8, 0);
                         break;
                     case 20:
-                        LevelValues(2, 2, 3, 3, 1, 0, 20);
+                        //LevelValues(2, 2, 3, 3, 1, 1/*3*/, 0, 20);
+                        //TE.AddRT(3, 0);
+                        //TE.AddCC(/*1*/1.5f, 0, 40, 1, 0);
+                        //TE.AddRT(4, 0);
+
+
+
+                        LevelValues(2, 2, 7, 7, 1, 1/*3*/, 0, 20);
                         TE.AddRT(3, 0);
-                        TE.AddCC(1, 0, 40, 1, 0);
+                        TE.AddCC(/*1*/1.5f, 0, 40, 1, 0);
                         TE.AddRT(4, 0);
                         break;
-                    case 21:
-                        LevelValues(2, 2, 3, 4, 3, 0, 17);
-                        TE.AddRT(5, 0);
-                        TE.AddCC(0, 0, 30, -1, 0);
-                        TE.AddRT(5, 0);
-                        break;
-                    case 22:
-                        LevelValues(1, 2, 4, 4, 3, 0, 15);
-                        TE.AddRT(4, 3.5f);
-                        TE.AddCC(2, 0, 40, -1, 0);
-                        TE.AddRT(2, 3.5f);
-                        break;
-                    case 23:
-                        LevelValues(2, 2, 2, 4, 3, 1, 30);
-                        TE.AddRT(3, 2);
-                        TE.AddCC(0.7f, 0, 40, 1, 0);
-                        TE.AddRT(5, 2);
-                        break;
-                    case 24:
-                        LevelValues(2, 2, 3, 3, 2, 0, 20);
-                        TE.AddRT(3, 0);
-                        TE.AddCC(0.5f, 0, 40, 1, 0);
-                        TE.AddRT(7, 0);
-                        break;
-                    case 25:
-                        LevelValues(2, 2, 2, 3, 2,-10, 10);
-                        TE.AddRT(1, 0);
-                        TE.AddCC(0, 0, 40, 1, 0);
-                        TE.AddRT(1, 0);
-                        break;
+                        //16-20 değiştirildi
+
+
+
+
+
+                    //case 21:
+                    //    LevelValues(2, 2, 3, 4, 3, 1, 0, 17);
+                    //    TE.AddRT(5, 0);
+                    //    TE.AddCC(0, 0, 30, -1, 0);
+                    //    TE.AddRT(5, 0);
+                    //    break;
+                    //case 22:
+                    //    LevelValues(1, 2, 4, 4, 3, 1, 0, 15);
+                    //    TE.AddRT(4, 3.5f);
+                    //    TE.AddCC(2, 0, 40, -1, 0);
+                    //    TE.AddRT(2, 3.5f);
+                    //    break;
+                    //case 23:
+                    //    LevelValues(2, 2, 2, 4, 3, 1, 1, 30);
+                    //    TE.AddRT(3, 2);
+                    //    TE.AddCC(0.7f, 0, 40, 1, 0);
+                    //    TE.AddRT(5, 2);
+                    //    break;
+                    //case 24:
+                    //    LevelValues(2, 2, 3, 3, 2, 1, 0, 20);
+                    //    TE.AddRT(3, 0);
+                    //    TE.AddCC(0.5f, 0, 40, 1, 0);
+                    //    TE.AddRT(7, 0);
+                    //    break;
+                    //case 25:
+                    //    LevelValues(2, 2, 2, 3, 2, 1, -10, 10);
+                    //    TE.AddRT(1, 0);
+                    //    TE.AddCC(0, 0, 40, 1, 0);
+                    //    TE.AddRT(1, 0);
+                    //    break;
                         
                 }
 
@@ -1531,16 +2316,27 @@ public class Main : MonoBehaviour
                 switch (CurrentLevelType.LevelNo)
                 {
                     case 1:
-                        StopAllCoroutines();
-                        LevelValues(1, 1, 1, 1, 1, 1,4);
-                        ThrowAMouseArea.enabled = false;
-                        NextGuideButton.SetActive(true);
-                        GuideCount = 1;
+                        //StopAllCoroutines();
+                        CloseGuideArrows();
+                        CloseGuideArrowUI679();
+                        LevelValues(1, 1, 1, 1, 1, 1, 1,4);
+
+                        ThrowAMouseArea.enabled = true;
+                        GuideCount = 0;
+                        NextGuideButton.SetActive(false);
+                        //AmmoShowerClose
+                        StartCoroutine(InformTargeting());
+                        StartCoroutine(HowToTArrow());
+
+                        StartCoroutine(GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0));
+                        StartCoroutine(GuideTargetUI(TE.Number, false, 1));
+                        GameGuideUI.SetActive(false);
+                        //StartCoroutine(BowToAmmo());
 
                         //AmmoShower:
-                        GameGuideText.text = "Ammo";
-                        GameGuideUI.SetActive(true);
-                        StartCoroutine(GuideArrowUI(0,false,2, false));
+                        //GameGuideText.text = "Ammo";
+                        //GameGuideUI.SetActive(true);
+                        //StartCoroutine(GuideArrowUI(0,false,2, false));
 
                         ActiveNumberShowers(false);
                         PlusOrMinus.enabled = false;
@@ -1550,15 +2346,27 @@ public class Main : MonoBehaviour
                         TE.AddRT(4, 0);
                         break;
                     case 2:
-                        StopAllCoroutines();
-                        LevelValues(1, 1, 1, 1, 1, 1, 4);
-                        GameGuideUI.SetActive(false);
-                        ThrowAMouseArea.enabled = true;
+                        HowToTArrowPosUpdate = false;
+                        //StopAllCoroutines();
+                        CloseGuideArrows();
+                        CloseGuideArrowUI679();
+                        LevelValues(1, 1, 1, 3, 3, 1, 1, 4);
+
+                        GameGuideText.text = "Every arrow have a number and next arrow's number is here";
+                        GameGuideUI.SetActive(true);
+                        ThrowAMouseArea.enabled = false;
+
+
                         NextGuideButton.SetActive(false);
-                        GuideCount = 4;
+                        GuideCount = 5;
                         ActiveNumberShowers(false);
 
-                        StartCoroutine(GuideTargetUI(StickedArrows.Current.GetComponent<Arrow>().Number, false, 0));
+                        StartCoroutine(GuideArrowUI(2, false));
+
+                        //StartCoroutine(MovableArrow());
+
+
+                        //StartCoroutine(GuideTargetUI(null, false, 0));
 
 
 
@@ -1572,47 +2380,116 @@ public class Main : MonoBehaviour
                         //StartCoroutine(GuideArrowUI(0, false, 0, true));
 
                         TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 10, 1, 0);
+                        TE.AddCC(0, 0, 5, 1, 0);
                         TE.AddRT(4, 0);
 
                         //NextTrainingText.enabled = true;
                         //burada targete ulaşmak zorunlu olmasın
                         break;
                     case 3:
-                        StopAllCoroutines();
-                        ActiveNumberShowers(false);
-                        PlusOrMinus.enabled = false;
+                        LevelValues(1, 1, 1, 1, 1, 1, 1, 4);
+                        CloseGuideArrowUI679();
+                        CloseGuideArrows();
+                        
 
-                        LevelValues(1, 1, 1, 3, 1, 1, 4);
-                        GuideCount = 2;
-
-                        NextGuideButton.SetActive(true);
-                        StartCoroutine(GuideArrowUI(0, false, 1, false));
                         ThrowAMouseArea.enabled = false;
-                        //NextTrainingText.enabled = true;
-                        //burada targete ulaşmak zorunlu olmasın
+                        NextGuideButton.SetActive(true);
+                        GuideCount = 3;
+
+
+                        PlusOrMinus.enabled = false;
+                        GameGuideText.text = "When you hit the ball, arrow will process with it.";
+                        GameGuideUI.SetActive(true);
 
                         TE.AddRT(4, 0);
                         TE.AddCC(0, 0, 10, 1, 0);
                         TE.AddRT(4, 0);
+
+                        //StopAllCoroutines();
+                        //LevelValues(1, 2, 2, 2, 1, 1, 1, 4);
+                        //CloseGuideArrowUI679();
+                        //CloseGuideArrows();
+                        //ThrowAMouseArea.enabled = false;
+                        //NextGuideButton.SetActive(true);
+                        //GuideCount = 3;
+                        //GameGuideUI.SetActive(false);
+
+                        //PlusOrMinus.enabled = true;
+
+                        //StartCoroutine(GuideArrowUI(0, false, 0, true));
+
+                        //TE.AddRT(4, 0);
+                        //TE.AddCC(0, 0, 10, 1, 0);
+                        //TE.AddRT(4, 0);
                         break;
                     case 4:
-                        NextGuideButton.SetActive(false);
+                        //ActiveNumberShowers(false);
+                        //PlusOrMinus.enabled = false;
+                        //GameGuideUI.SetActive(false);
+                        //LevelValues(1, 1, 1, 3, 1, 1, 1, 4);
+                        //GuideCount = 2;
+
+                        //NextGuideButton.SetActive(true);
+                        //StartCoroutine(GuideArrowUI(0, false, 1, false));
+                        //ThrowAMouseArea.enabled = false;
+
+                        //TE.AddRT(4, 0);
+                        //TE.AddCC(0, 0, 10, 1, 0);
+                        //TE.AddRT(4, 0);
+
+
+                        LevelValues(1, 2, 2, 2, 1, 1, 1, 4);
+                        ThrowAMouseArea.enabled = false;
+                        PlusOrMinus.enabled = false;
+                        NextGuideButton.SetActive(true);
+                        GameGuideUI.SetActive(true);
+                        TrainingOperationA = 0;
+                        GameGuideText.text = "Every arrow and ball have a color, every color has a sign.";
+                        GuideCount = 8;
+                        TE.AddRT(4, 0);
+                        TE.AddCC(0, 0, 5, 1, 0);
+                        TE.AddRT(4, 0);
+                        break;
+                    case 5:
+                        LevelValues(2, 2, 2, 2, 1, 0, 1, 4);
+                        CloseGuideArrowUI679();
+                        CloseGuideArrows();
+                        CloseGuideTargets();
+                        TrainingOperationA = 0;
+                        ThrowAMouseArea.enabled = true;
                         GameGuideUI.SetActive(false);
-                        StopAllCoroutines();
-                        LevelValues(1, 2, 2, 2, 1, 1, 6);
-                        //aşağısı optimize (normalde de 4. levelın çağırılmaması gerekiyor if (!CurrentLevelType.Finished) saçma)?
-                        //if (!CurrentLevelType.Finished)
-                        //{
-                        //    NextGuideButton.SetActive(true);
-                        //    //PlusMinusShower.enabled = true;
-                        //    ThrowAMouseArea.enabled = false;
-                        //    ////NextTrainingText.enabled = true;
-                        //    //TrainingTable.enabled = true;
-                        //}
+                        NextGuideButton.SetActive(false);
+                        GuideCount = 4;
+
+                        
+
                         TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 20, 1, 0);
+                        TE.AddCC(0, 0, 15, 1, 0);
                         TE.AddRT(4, 0);
+                       
+
+                        //NextGuideButton.SetActive(true);
+                        //GameGuideUI.SetActive(true);
+                        ////StopAllCoroutines();
+                        //LevelValues(1, 2, 2, 2, 1, 1, 1, 6);
+                        //GuideCount = 1;
+                        //GameGuideText.text = "Do it yourself!";
+
+
+
+
+                        ////aşağısı optimize (normalde de 4. levelın çağırılmaması gerekiyor if (!CurrentLevelType.Finished) saçma)?
+                        ////if (!CurrentLevelType.Finished)
+                        ////{
+                        ////    NextGuideButton.SetActive(true);
+                        ////    //PlusMinusShower.enabled = true;
+                        ////    ThrowAMouseArea.enabled = false;
+                        ////    ////NextTrainingText.enabled = true;
+                        ////    //TrainingTable.enabled = true;
+                        ////}
+                        //TE.AddRT(4, 0);
+                        //TE.AddCC(0, 0, 20, 1, 0);
+                        //TE.AddRT(4, 0);
                         break;
                     
                 }
@@ -1622,10 +2499,9 @@ public class Main : MonoBehaviour
         }
 
         TE.FirstPositions();
+
     }
     private bool ShowerArrowB = false;
-    IEnumerator GuideTargetUI0;
-    IEnumerator GuideTargetUI1;
     private IEnumerator ShowerArrowBlink(Image ShowerArrow)
     {
         ShowerArrowB = false;
@@ -1668,21 +2544,33 @@ public class Main : MonoBehaviour
         //GuideUIArrow.rectTransform.sizeDelta= GuideEquationShowerPos.sizeDelta;
         
         //NextLevelButton.SetActive(true);
-        TargetGuideVisible = false;
+        //TargetGuideVisible = false;
+        CloseGuideArrows();
+        CloseGuideTargets();
     }
-    public TMP_Text Text0;
+    
     void Awake()
     {
-
+        if (Application.isEditor)
+        {
+            Time.timeScale = 1.5f;
+        }
+        WidthRatio = c.pixelRect.width / 100;
+        AimingGA = new GuideArrow(AimingGAStick, AimingGATop, false);
         for (int i = 0; i < 3; i++)
         {
             GAs[i] = new GuideArrow(GuideUIArrow0[i], GuideUIArrowTop[i], false);
         }
 
+        for (int i = 0; i < 2; i++)
+        {
+            GTs[i] = new GuideTarget(TargetUIGuide[i], false);
+        }
 
-        WidthRatio = Screen.width / 1920f;
-        //TargetWonShower.rectTransform.position = ;
         
+        CanvasScalerRatio = c.GetComponent<CanvasScaler>().referenceResolution.x / Screen.width;
+
+
         OpenMenu();
         //Levels();
 
@@ -1692,15 +2580,17 @@ public class Main : MonoBehaviour
         RestartButColor = RestartButImage.color;
 
 
+
+
         StickedArrows = new ObjectPool(MaxFBallCount);
         StickedArrows.SpawnArrows(ArrowPrefab, ArrowsParent.transform, number, NumbersParent);
         StickedArrows.SetReadyCount(FBallCount);
-
-        Arrows = new ObjectPool(MaxThrow);
+        MaxThrowForArrows = (ushort)(MaxThrow + 1);
+        Arrows = new ObjectPool(MaxThrowForArrows);
         Arrows.SpawnArrows(ArrowPrefab, ArrowsParent.transform, number, NumbersParent);
         Arrows.SetReadyCount(MinThrow);
-
-        BallsUI = new ObjectPool(MaxThrow);
+        
+        BallsUI = new ObjectPool(MaxThrowForArrows);
         BallsUI.SpawnBallUIs(NextBallPrefab, BallUIParent);
         BallsUI.SetReadyCount(MinThrow);
 
@@ -1716,18 +2606,18 @@ public class Main : MonoBehaviour
         TargetIK.transform.position = ShortenBowPos.position;
 
 
-        Archery = new LevelType("Archery",25, ArcheryTextInfo);
-        Math = new LevelType("Math",25, MathTextInfo);
-        Training = new LevelType("Training",4, null);
+        Archery = new LevelType("Archery",20, ArcheryTextInfo);
+        Math = new LevelType("Math",20, MathTextInfo);
+        Training = new LevelType("Training",6, null);
 
-        if (Training.LevelNo <= 3)
+        if (Training.LevelNo <= 4)
         {
             Training.LevelNo = 1;
         }
 
         GetLevelDurations(Archery);
         GetLevelDurations(Math);
-
+        
     }
     private void GetLevelDurations(LevelType lt)
     {
@@ -1781,60 +2671,79 @@ public class Main : MonoBehaviour
         NumberShower[1].fontSize = TargetNoText.fontSize;
         NumberShower[2].fontSize = TargetNoText.fontSize;
 
-        int SpaceNo = GetSpaceCountOfNo(TE.Equivalent);
-
-        NumberShower[0].rectTransform.anchoredPosition = LetterPos(TE.EquationText, TE.EquationText.text.Length - SpaceNo, TE.EquationText.text.Length - 1);
-        NumberShower[1].rectTransform.anchoredPosition = LetterPos(TargetNoText, TargetNoText.text.Length - SpaceNo, TargetNoText.text.Length - 1);
         NumberShower[2].rectTransform.anchoredPosition = Vector3.zero;
 
-
-
-        //TargetWonShower.rectTransform.anchoredPosition = TargetNoText.rectTransform.localPosition + TargetNoText.textInfo.linkInfo[TargetNoText.text.Length - 1].;
-
         yield return new WaitForSecondsRealtime(0.001f);
-        Vector3 WESpace = new Vector3((NumberShower[2].textInfo.characterInfo[0].topRight.x - NumberShower[2].textInfo.characterInfo[0].topLeft.x) / 2f + 20 + (NumberShower[0].textInfo.characterInfo[NumberShower[0].text.Length - 1].topRight.x - NumberShower[0].textInfo.characterInfo[0].topLeft.x) / 2f, 0);
+        
+        StartCoroutine(GuideArrowUI(4, false));
+        StartCoroutine(GuideArrowUI(5, false));
 
-        Vector2 WonEqualityPos1 = NumberShower[2].rectTransform.localPosition - WESpace;
-        Vector2 WonEqualityPos2 = NumberShower[2].rectTransform.localPosition + WESpace;
-        StartCoroutine(WonEShower(NumberShower[0], WonEqualityPos1));
-        StartCoroutine(WonEShower(NumberShower[1], WonEqualityPos2));
-        StartCoroutine(GuideArrowUI(0, false, 4, false));
-        StartCoroutine(GuideArrowUI(1, false, 5, false));
+
+
+
+
+
     }
-    
+
+
+
+
+
+
+
+
+
     private bool WonShowerReaching;
-    private IEnumerator WonEShower(TMP_Text WonShower, Vector2 WonShowerEnd)
+    private IEnumerator MovableArrowedText(TMP_Text text, Vector2 TextEndPos, float OtherTextFontSize)
     {
         WonShowerReaching = false;
         yield return new WaitForSecondsRealtime(0.2f);
         WonShowerReaching = true;
-        Vector2 firstPos = WonShower.rectTransform.anchoredPosition;
-        
+        Vector2 firstPos = text.rectTransform.anchoredPosition;
+        float time = 0;
+        bool FontSizeChange = OtherTextFontSize != text.fontSize;
+        float s = (OtherTextFontSize - text.fontSize) / 25f;
         while (WonShowerReaching)
         {
-            yield return new WaitForSecondsRealtime(0.02f);
-
-
-
-
-            //WonShower.rectTransform.anchoredPosition = Vector2.Lerp(WonShower.rectTransform.anchoredPosition, WonShowerEnd, 0.09f);
-            WonShower.rectTransform.anchoredPosition += (WonShowerEnd - firstPos) / 25f;
-            if (Vector2.Distance(NumberShower[0].rectTransform.anchoredPosition, WonShowerEnd) < 5)
+            //yield return new WaitForSecondsRealtime(0.02f);
+            yield return new WaitForSeconds(0.005f);
+            time += Time.deltaTime;
+            if (time >= 0.01f)
             {
-                
-                WonShower.rectTransform.anchoredPosition = WonShowerEnd;
-                WonShowerReaching = false;
-                break;
+                time = 0;
+                //WonShower.rectTransform.anchoredPosition = Vector2.Lerp(WonShower.rectTransform.anchoredPosition, WonShowerEnd, 0.09f);
+                text.rectTransform.anchoredPosition += (TextEndPos - firstPos) / 25f;
+
+                if (FontSizeChange)
+                {
+                    text.fontSize += s;
+                }
+                //if (Vector2.Distance(text.rectTransform.anchoredPosition, TextEndPos) < 5)
+                //{
+                //    Debug.Log("Movable Arrowed Text Break");
+                //    text.rectTransform.anchoredPosition = TextEndPos;
+                //    WonShowerReaching = false;
+                //    break;
+                //}
             }
 
 
+
+
         }
+        GAs[0].Active = false;
+        GAs[1].Active = false;
+        GAs[2].Active = false;
+        WonShowerReaching = false;
     }
 
     private Vector2 LetterPos(TMP_Text Text, int Index, int Index2)
     {
         //characterInfo her karakterin pozisyonunu veriyor ama asıl fixed pozisyonunu vermiyor yani bir charın orta noktasını, o yüzden - yazınca hata veriyordu, onu aşağıda düzelttim eğer fixed pozisyonunu verebiliyorsa minus bool'üne gerek yok
 
+
+
+        //NumberShower[2].preferredWidth ile yapılacak width hesaplanırken!!!
         TMP_CharacterInfo CI = Text.textInfo.characterInfo[Index];
         TMP_CharacterInfo CI2 = Text.textInfo.characterInfo[Index2];
         
@@ -1882,15 +2791,19 @@ public class Main : MonoBehaviour
 
         //LastBallUI = NextBallsUI[0].GetComponentInChildren<TMP_Text>();
         LastBallUI = BallsUI.Objects[BallsUI.Next].GetComponentInChildren<TMP_Text>();
-        if (BallsUI.Next >= 0)
-        {
+        //if (BallsUI.Next >= 0)
+        //{
 
-            StartCoroutine(NextArrowBlink());
-        }
+        //    //StartCoroutine(NextArrowBlink());
+        //    Debug.Log("BallsUI.Next >= 0");
+        //    CurrentBallShower.enabled = false;
+
+        //}
+
     }
     private IEnumerator UpdateTargetPos(GameObject Number, byte TargetNo)
     {
-        while (TargetGuideVisible)
+        while (GTs[TargetNo].Active)
         {
             yield return new WaitForSecondsRealtime(0.01f);
             TargetUIGuide[TargetNo].rectTransform.position = Number.GetComponent<RectTransform>().position;
@@ -1898,10 +2811,16 @@ public class Main : MonoBehaviour
     }
     private IEnumerator GuideTargetUI(GameObject Number, bool SamePos, byte TargetNo)
     {
+        
         yield return new WaitForSecondsRealtime(0.25f);
+        if (Number==null)//TrainingLevel2
+        {
+            Number = StickedArrows.Current.GetComponent<Arrow>().Number;
+        }
         bool blink = false;
         TargetUIGuide[TargetNo].rectTransform.position = Number.GetComponent<RectTransform>().position;
-        TargetGuideVisible = true;
+        //TargetGuideVisible = true;
+        GTs[TargetNo].Active = true;
         TargetUIGuide[TargetNo].enabled = true;
 
         if (!SamePos)
@@ -1911,7 +2830,7 @@ public class Main : MonoBehaviour
         }
 
 
-        while (TargetGuideVisible)
+        while (GTs[TargetNo].Active)
         {
             yield return new WaitForSecondsRealtime(0.36f);
             
@@ -1931,43 +2850,6 @@ public class Main : MonoBehaviour
         TargetUIGuide[TargetNo].enabled = false;
 
 
-
-        //float time = 0;
-        //int time2 = 0;
-        //bool blink = false;
-        //yield return new WaitForSecondsRealtime(0.1f);
-        //TargetUIGuide.rectTransform.position = Number.GetComponent<RectTransform>().position;
-        //TargetUIGuide.enabled = true;
-        //TargetGuideVisible = true;
-        //while (TargetGuideVisible)
-        //{
-        //    yield return new WaitForSeconds(0.01f);
-        //    time += 15 * Time.deltaTime;
-        //    if (time >= 0.1f)//0.1
-        //    {
-        //        time2++;
-        //        if (time2 > 25)
-        //        {
-        //            time2 = 0;
-        //            blink = !blink;
-        //            if (blink)
-        //            {
-        //                TargetUIGuide.enabled = false;
-        //            }
-        //            else
-        //            {
-        //                TargetUIGuide.enabled = true;
-        //            }
-        //        }
-        //        if (!SamePos)
-        //        {
-        //            TargetUIGuide.rectTransform.position = Number.GetComponent<RectTransform>().position;
-        //        }
-
-
-        //    }
-        //}
-        //TargetUIGuide.enabled = false;
     }
     private bool NextABlink = true;
     
@@ -2012,14 +2894,49 @@ public class Main : MonoBehaviour
 
 
     }
+    private void UpdateNextAShower()
+    {
 
-    
-    
+        CurrentBallShower.rectTransform.localPosition = BallsUI.Objects[BallsUI.Next].transform.localPosition + (Vector3)BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>().sizeDelta / 2;
+    }
+    private IEnumerator NextArrowShower()
+    {
+        
+        if (!CurrentBallShower.enabled)
+        {
+            //Debug.Log("CurrentBallShower");
+            CurrentBallShower.enabled = true;
+
+            while (CurrentBallShower.enabled)
+            {
+                yield return new WaitForSeconds(0.005f);
+                //optimize edilecek her seferinde kontrol edilmektense her top harcandığın da kontrol etse daha güzel
+                //if (BallsUI.ReadyCount <= BallsUI.Next/*BallsUI.Count <= 0*//*NextBallsUI.Count <= 0*/)
+                //{
+                //    Debug.Log("NextArrowShower Break");
+                //    CurrentBallShower.enabled = false;
+                //    break;
+                //}
+                //TMP_Text text = NextBallsUI[0].GetComponentInChildren<TMP_Text>();
+
+
+
+                CurrentBallShower.rectTransform.Rotate(0, 0, -Time.deltaTime * 60);
+
+            }
+        }
+        
+
+
+
+    }
+
     public void Throw()
     {
         if (Arrows.Next < Arrows.ReadyCount)
         {
             StartCoroutine(AimTarget());
+
         }
         else
         {
@@ -2028,7 +2945,7 @@ public class Main : MonoBehaviour
     }
     public void ReleaseArrow()
     {
-        Aiming = false;
+        Sliding = false;
     }
     private void SetBall(Arrow a, bool WillStick)
     {
@@ -2040,55 +2957,63 @@ public class Main : MonoBehaviour
         a.Number.GetComponent<TMP_Text>().text = FracNoToString(a.ArrowNo, false, false);
         if (WillStick)
         {
-            if (StickArrowOperation > 1)
-            {
+            Color c;
+            (a.ArrowNo.Oparetion, c) = SetColors(a.ArrowNo.Oparetion, StickArrowOperation, StickedBlueCount, FBallCount);
 
-                switch (a.ArrowNo.Oparetion)
-                {
-                    case 0:
-                        if (BlueCount <= CurrentBlueCount)
-                        {
-                            a.SetColor(RedSubtraction);
-                            a.ArrowNo.Oparetion=1;
-
-                        }
-                        else
-                        {
-
-                            a.SetColor(BlueAddition);
-
-                            a.ArrowNo.Oparetion = 0;
-                            CurrentBlueCount++;
-                        }
-                        break;
-
-                    case 1:
-
-                        if (FBallCount - BlueCount <= CurrentRedCount)
-                        {
-                            a.SetColor(BlueAddition);
-
-                            a.ArrowNo.Oparetion = 0;
-                        }
-                        else
-                        {
-                            a.SetColor(RedSubtraction);
+            a.SetColor(c);
 
 
-                            a.ArrowNo.Oparetion = 1;
-                            CurrentRedCount++;
-                        }
-                        break;
-                }
 
-            }
-            else
-            {
-                a.SetColor(BlueAddition);
+            //silinecek:
+            //if (StickArrowOperation > 1)
+            //{
+
+            //    switch (a.ArrowNo.Oparetion)
+            //    {
+            //        case 0:
+            //            if (StickedBlueCount <= CurrentBlueCount)
+            //            {
+            //                a.SetColor(RedSubtraction);
+            //                a.ArrowNo.Oparetion = 1;
+
+            //            }
+            //            else
+            //            {
+
+            //                a.SetColor(BlueAddition);
+
+            //                a.ArrowNo.Oparetion = 0;
+            //                CurrentBlueCount++;
+            //            }
+            //            break;
+
+            //        case 1:
+
+            //            if (FBallCount - StickedBlueCount <= CurrentRedCount)
+            //            {
+            //                a.SetColor(BlueAddition);
+
+            //                a.ArrowNo.Oparetion = 0;
+            //            }
+            //            else
+            //            {
+            //                a.SetColor(RedSubtraction);
 
 
-                a.ArrowNo.Oparetion = 0;
-            }
+            //                a.ArrowNo.Oparetion = 1;
+            //                CurrentRedCount++;
+            //            }
+            //            break;
+            //    }
+
+            //}
+            //else
+            //{
+            //    a.SetColor(BlueAddition);
+
+
+            //    a.ArrowNo.Oparetion = 0;
+            //}
         }
         else
         {
@@ -2109,169 +3034,257 @@ public class Main : MonoBehaviour
     {
         return new FracNo((byte)Random.Range(0, Operation)/*0,4*/, Random.Range(NoRange1, NoRange2), 1);
     }
+    Vector3 CurrentArrowPathPartPos;
+    float Power;
+    float ArrowAngle;
+    private float MinStretch = 10;
     private IEnumerator AimTarget()
     {
-        Arrows.GetObject(true);
+        Sliding = true;
 
-        Aiming = true;
-        if (PlatformTouchScreen)
-        {
-            mouseStartedPos = Touchscreen.current.position.ReadValue();
-        }
-        else
-        {
-            mouseStartedPos = Mouse.current.position.ReadValue();
-        }
-
-        float StretchPow = 0;
-        Arrow a = Arrows.Current.GetComponent<Arrow>();
-
-
-
-        //a.ArrowNo = NextNumbers[NextArrow - FBallCount - 1].No;
-        a.ArrowNo = NextNumbers[Arrows.Next - 1].No;
-        //ArcherArrow++;
-        SetBall(a, false);
-
-        //silinidire atmayı da sayacak
-
-
-
-        Vector3 ArrowPathPos= ArrowPoint.position;
-
-
-        float rot = ArcherSpine.transform.eulerAngles.z;
-        while (Aiming)
+        float StretchPow;
+        bool Aiming = false;
+        
+        mouseStartedPos = GetMousePos();
+        Arrow a=null;
+        while (Sliding)
         {
             yield return new WaitForSeconds(0.005f);//0.001
-            ArrowLoading(Arrows.Current);
+            //Time.deltatime koyulacak pcde ve androidde bakılacak fark var mı bu aiming dis
+            //sürüklemeye başladığında eğer bir noktaya gelirse germeye başlıyor ama başlangıcı o nokta olarak alıyor, sürüklemeye başladığı nokta alarak başlamalı
 
-           
-            //check if touchscreen connected(maybe helps)
             Vector3 MousePos;
-            if (PlatformTouchScreen)
-            {
-                MousePos = Touchscreen.current.position.ReadValue();
-            }
-            else
-            {
-                MousePos = Mouse.current.position.ReadValue();
-            }
-
+            
+            MousePos = GetMousePos();
 
             MousePos.z = 9.5f;//Camera.main.nearClipPlane
             Vector3 MousePosWorld = Camera.main.ScreenToWorldPoint(MousePos);
-            TargetSphere.transform.position = MousePosWorld;
-            //Debug.Log(StretchPow);
-            StretchPow = Vector2.Dot(mouseStartedPos - (Vector2)MousePos, Vector2.right)/2/** 1920f / Screen.width */;
+
+            
+            StretchPow = Vector2.Dot(mouseStartedPos - (Vector2)MousePos, Vector2.right)* CanvasScalerRatio;
+
+
             Vector3 mouseStartedPosW = mouseStartedPos;
             mouseStartedPosW.z = 9.5f;
             Vector3 mouseStartedPosWorld = Camera.main.ScreenToWorldPoint(mouseStartedPosW);
 
-            if (StretchPow < 0)
-            {
-                StretchPow = 0;
-            }
-            else if (StretchPow > 100 * WidthRatio)
-            {
-                StretchPow = 100 * WidthRatio;
-            }
-            
-            TargetIK.transform.position = ShortenBowPos.position + StretchPow / (100 * WidthRatio) * (StretchBowPos.position - ShortenBowPos.position);
 
-
-
-            if (StretchPow > 30 * WidthRatio && Vector2.Angle(mouseStartedPosWorld - MousePosWorld, Vector2.left) > 120)
+            if (/*StretchPow > 30 * WidthRatio && */Vector2.Angle(mouseStartedPosWorld - MousePosWorld, Vector2.left) > 120)
             {
 
                 //ArcherSpine.transform.LookAt(TargetSphere.transform.position);
                 ArcherSpine.transform.LookAt(ArcherSpine.transform.position + mouseStartedPosWorld - MousePosWorld);
                 ArcherSpine.transform.Rotate(0, 90, 0);
             }
+
+
             Rope.SetPosition(0, RopePoints[0].position);
             Rope.SetPosition(1, ArrowFinger.position);
             Rope.SetPosition(2, RopePoints[1].position);
-            /*((Screen.width/100*Screen.width/ Screen.height)) * (c.scaleFactor / 2.4f)* */
-            float Power = (Mathf.Abs(StretchPow) / 450/*350*/ + 0.025f/*0.015f*/)/ WidthRatio;//Hipotenus
-            float ArrowAngle = Arrows.Current.transform.eulerAngles.z * Mathf.Deg2Rad;
 
-            a.ArrowAngle = ArrowAngle;
-            a.ArrowPower = Power;
-            Vector3 CurrentArrowPathPartPos = ArrowFinger.position;
-            bool NoMoreDots = false;
-            for (int i = 0; i < ArrowPath.Count; i++)
+            if (!Aiming)
             {
-                if (NoMoreDots)
+                if(StretchPow > MinStretch)
                 {
-                    ArrowPath.GetObject(false);
-                }
-                else
-                {
-                    ArrowPath.GetObject(true);
+                    StartCoroutine(GuideArrowUI(10, false));
+                    UpdateNextAShower();
+
+
+
 
 
                     
-                    CurrentArrowPathPartPos += new Vector3(Mathf.Cos(ArrowAngle), Mathf.Sin(ArrowAngle))* spaceBetweenAPD;
-                    //if (ArrowAngle * Mathf.Rad2Deg >= -90)
-                    //{
-                    ArrowAngle -= ArrowTurnSpeed * spaceBetweenAPD / Power;
 
-                    //}
-                    //else
-                    //{
-                    //    ArrowAngle = -90 * Mathf.Deg2Rad;
-                    //}
+                    a = Arrows.Current.GetComponent<Arrow>();
 
-                    //if (ArrowAngle * Mathf.Rad2Deg > -90)
-                    //{
-                    //    ArrowAngle = Mathf.Lerp(ArrowAngle, -90 * Mathf.Deg2Rad, ArrowTurnSpeed * spaceBetweenAPD / Power);
+                    Arrows.Current.SetActive(true);
 
-                    //}
-                    //else
-                    //{
-                    //    ArrowAngle = -90 * Mathf.Deg2Rad;
-                    //}
+                    a.ArrowNo = NextNumbers[Arrows.Next - 1].No;
+                    //ArcherArrow++;
+                    SetBall(a, false);
 
-                    ArrowPath.Current.transform.position = CurrentArrowPathPartPos;
-                    if (Physics.CheckSphere(ArrowPath.Current.transform.position, ArrowPath.Current.GetComponent<MeshRenderer>().bounds.size.x, LMaskTarget))
-                    {
-                        NoMoreDots = true;
-                    }
+                    //silinidire atmayı da sayacak
+
+                    Aiming = true;
                 }
                 
+
+
             }
-            ArrowPath.Next = 0;
+            else
+            {
+                
+                
+                ArrowLoading(Arrows.Current);
+
+
+                //check if touchscreen connected(maybe helps)
+
+                TargetSphere.transform.position = MousePosWorld;
+                //Debug.Log(StretchPow);
+
+
+
+                
+
+                if (StretchPow < 0)
+                {
+                    StretchPow = 0;
+                }
+                else if (StretchPow > MaxFingerSlideDis /** WidthRatio*/)
+                {
+                    StretchPow = MaxFingerSlideDis/* * WidthRatio*/;
+                }
+
+                TargetIK.transform.position = ShortenBowPos.position + StretchPow / (MaxFingerSlideDis/*/CanvasScalerRatio*//* * WidthRatio*/) * (StretchBowPos.position - ShortenBowPos.position);
+
+
+
+                /*((Screen.width/100*Screen.width/ Screen.height)) * (c.scaleFactor / 2.4f)* */
+                Power = (Mathf.Abs(StretchPow) / 300/*450*/ + 0.025f/*0.015f*/) /*/ WidthRatio*/;//Hipotenus
+                ArrowAngle = Arrows.Current.transform.eulerAngles.z * Mathf.Deg2Rad;
+
+                a.ArrowAngle = ArrowAngle;
+                a.ArrowPower = Power;
+                CurrentArrowPathPartPos = ArrowFinger.position;
+
+
+
+
+                float ArrowsWidth = 0.7f;
+                ArrowStep(ArrowsWidth);
+
+                bool NoMoreDots = false;
+                for (int i = 0; i < ArrowPath.Count; i++)
+                {
+                    
+                    if (NoMoreDots)
+                    {
+                        ArrowPath.GetObject(false);
+                    }
+                    else
+                    {
+
+                        ArrowPath.GetObject(true);
+
+
+
+
+
+                        ArrowStep(spaceBetweenAPD);
+
+                        //CurrentArrowPathPartPos += new Vector3(Mathf.Cos(ArrowAngle), Mathf.Sin(ArrowAngle)) * spaceBetweenAPD;
+                        ////if (ArrowAngle * Mathf.Rad2Deg >= -90)
+                        ////{
+                        //ArrowAngle -= ArrowTurnSpeed * spaceBetweenAPD / Power;
+
+                        //}
+                        //else
+                        //{
+                        //    ArrowAngle = -90 * Mathf.Deg2Rad;
+                        //}
+
+                        //if (ArrowAngle * Mathf.Rad2Deg > -90)
+                        //{
+                        //    ArrowAngle = Mathf.Lerp(ArrowAngle, -90 * Mathf.Deg2Rad, ArrowTurnSpeed * spaceBetweenAPD / Power);
+
+                        //}
+                        //else
+                        //{
+                        //    ArrowAngle = -90 * Mathf.Deg2Rad;
+                        //}
+
+                        ArrowPath.Current.transform.position = CurrentArrowPathPartPos;
+                        if (Physics.CheckSphere(ArrowPath.Current.transform.position, ArrowPath.Current.GetComponent<MeshRenderer>().bounds.size.x, LMaskTarget))
+                        {
+                            NoMoreDots = true;
+                        }
+                    }
+                    //if (i < 3)
+                    //{
+                    //    //optimize edilebilir
+                    //    ArrowPath.Current.SetActive(false);
+                    //}
+                }
+                
+                ArrowPath.Next = 0;
+
+
+
+                if (StretchPow <= MinStretch)
+                {
+                    Aiming = false;
+                    Arrows.Current.SetActive(false);
+                    a.Number.SetActive(false);
+                    //CloseAiming();
+                }
+            }
+
+
+
+
+
+        }
+
+
+
+
+
+        CloseAiming();
+        if (Aiming)
+        {
+            PlayAudio(ArrowThrowing0);
+            Arrows.GetObject(false);
+
+            //yield return new WaitForSecondsRealtime(2);
+            BallsUI.GetObject(false);
+
+
+            if (BallsUI.Next < BallsUI.ReadyCount)//5 yapınca hata veriyor
+            {
+
+                LastBallUI = BallsUI.Objects[BallsUI.Next].GetComponentInChildren<TMP_Text>();
+            }
+
+            
+            HowToTArrowPosUpdate = false;
+            
+            StartCoroutine(a.Go());
+            UpdateNextAShower();
+
+            if (BallsUI.ReadyCount <= BallsUI.Next)
+            {
+                CurrentBallShower.enabled = false;
+            }
+
             
         }
 
 
-
-
-
-        //AÇILACAK:
-        //BallsUI.Objects.RemoveAt(0);
-
-        //BallsUI.Objects[BallsUI.Next].SetActive(false);
-        //BallsUI.Next++;
-
-
-
-        //Bu hatayı çözünce diğeride bitiyor mu?:hayır
-        BallsUI.GetObject(false);
-
-        //Debug.Log("ghj" + BallsUI.Next);
-        if (BallsUI.Next < BallsUI.ReadyCount)//5 yapınca hata veriyor
-        {
-
-            LastBallUI = BallsUI.Objects[BallsUI.Next].GetComponentInChildren<TMP_Text>();
-        }
-
+    }
+    
+    public void PlayAudio(AudioClip clip)
+    {
+       
+        AudioS.clip = clip;
+        AudioS.PlayOneShot(AudioS.clip);
+    }
+    private void CloseAiming()
+    {
+        AimingGA.Active = false;
+        AimingGA.Arrow.enabled = false;
+        AimingGA.ArrowTop.enabled = false;
         foreach (GameObject g in ArrowPath.Objects)
         {
             g.SetActive(false);
         }
-        HowToTArrowPosUpdate = false;
-        StartCoroutine(a.Go());
+    }
+    private void ArrowStep(float StepLength)
+    {
+        CurrentArrowPathPartPos += new Vector3(Mathf.Cos(ArrowAngle), Mathf.Sin(ArrowAngle)) * StepLength;
+
+        ArrowAngle -= ArrowTurnSpeed * StepLength / Power;
+        
     }
     //ifwon birkaç yerde kullanılıyor bazen check etmesine gerek olmuyor direk kazandıran method yazılacak
     public void IfWon()
@@ -2279,6 +3292,8 @@ public class Main : MonoBehaviour
         //optimize edilecek TargetAndEquivalentSame() ile birleştirilebilir
         //yere saplanınca alttaki else if kısmına gerek kalmıyor, diğerlerinde gerekiyor, bu 2 ayrı method olarak yazılabilir belki:
 
+
+        //kontrol etmeden won eklenecek bazen kontrole gerek yok
         if (!Won.activeSelf)
         {
             if (TE.TargetNo.UpNo == TE.Equivalent.UpNo)
@@ -2286,19 +3301,13 @@ public class Main : MonoBehaviour
                 //ThrowAMouseArea.enabled = false;
                 Won.SetActive(true);
                 TE.FastRotSpeed();
-
+                PlayAudio(WinEffect);
 
                 //AnotherLevel ve BlinkTargetNoText 'i buraya yazabilirim ayrı method olmasındansa:
                 //StartCoroutine(AnotherLevel());
 
                 //StartCoroutine(BlinkTargetNoText());
-                if (CurrentLevelType.Type == "Training" && CurrentLevelType.LevelNo >= 2 && CurrentLevelType.LevelNo <= 3)
-                {
-                    //NextTrainingText.enabled = true;
-
-
-                }
-                else
+                if (!(CurrentLevelType.Type == "Training" && CurrentLevelType.LevelNo == 2))
                 {
                     NextLevelButton.SetActive(true);
                 }
@@ -2325,12 +3334,14 @@ public class Main : MonoBehaviour
                     }
                 }
                 //Debug.Log("AllSticked : " + AllSticked);
-                if (AllSticked && !Aiming)
+                if (AllSticked && !Sliding)
                 {
                     OOAmmoText.enabled = true;
                     NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Try Again";
 
                     NextLevelButton.SetActive(true);
+                    PlayAudio(LevelFailed);
+                    
                 }
             }
             //CurrentArrow.transform.eulerAngles = new Vector3(90, CurrentArrow.transform.eulerAngles.y, 0);
@@ -2338,6 +3349,22 @@ public class Main : MonoBehaviour
             //CurrentArrow.transform.rotation=Quaternion.identity;
         }
 
+    }
+    private IEnumerator Failed()
+    {
+        //PlayAudio(FailedSound);
+        AudioS.Play();
+        while (true)
+        {
+            yield return new WaitForSeconds(0.005f);
+            if (AudioS.time>0.35f)
+            {
+                
+                
+                break;
+            }
+        }
+        
     }
 
     private IEnumerator CylinderShake()
@@ -2426,7 +3453,7 @@ public class Main : MonoBehaviour
                     second = 0;
                 }
                 
-                Debug.Log("Counted");
+                //Debug.Log("Counted");
                 CurrentLevelType.LevelDurations[CurrentLevelType.LevelNo - 1]++;
             }
             else
@@ -2486,10 +3513,12 @@ public class Main : MonoBehaviour
     {
         Debug.DrawLine(ArmPos.transform.position, ArmPos.transform.position + ArmPos.transform.up * 100, Color.black, 0.02f);
 
+        
+
 
         //TestSphere2.transform.position = TestSphere.transform.position + Vector3.Cross(TestCube.transform.position - TestSphere.transform.position, Vector3.forward).normalized;
 
-        
+
         //Debug.DrawLine(ArcherSpine.transform.position,ArcherSpine.transform.position+ ArcherSpine.transform.forward*100, Color.black, 0.02f);
     }
     private void ArrowLoading(GameObject CurrentArrow)

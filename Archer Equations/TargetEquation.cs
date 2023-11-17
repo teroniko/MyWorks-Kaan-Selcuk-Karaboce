@@ -105,10 +105,10 @@ public class TargetEquation : MonoBehaviour
         }
         cc = ccs[0];
         rt = SelectedRoutes[0];
-        //ccs.RemoveAt(ccs.Count - 1);
-
-        //JustRot = cc.CSpeed == null;
+        
         JustRot= cc.CSpeed.Speed==0&&cc.CSpeed.SpeedAcceleration==0;
+        UpperRouteDid = false;
+        Timing = false;
     }
     public void SetNo()
     {
@@ -142,13 +142,13 @@ public class TargetEquation : MonoBehaviour
         CurrentRoute = CylinderRoutes[rt.Position].position;
 
         CurrentConIndex++;
-        
+
         if (CurrentConIndex == ccs.Count)
         {
             
             ccs.Reverse();
             CurrentConIndex = 0;
-            
+
         }
         CurrentRouteIndex++;
 
@@ -157,6 +157,8 @@ public class TargetEquation : MonoBehaviour
             CurrentRouteIndex = 0;
             SelectedRoutes.Reverse();
         }
+
+
     }
     private void SetCurrent()
     {
@@ -167,8 +169,9 @@ public class TargetEquation : MonoBehaviour
     private Vector3 CurrentRoute;
     private float CChangeTime = 0;
     private bool Timing = false;
-    private float speed0;
-    private float speedA0;
+    private float speed0=0;
+    private float speedA0=0;
+    private bool UpperRouteDid = false;
     private void CheckChange()
     {
         switch (JustRot)
@@ -178,38 +181,45 @@ public class TargetEquation : MonoBehaviour
                 {
                     CChangeTime += Time.deltaTime;
                     //Debug.Log("Counting");
+                    //Debug.Log("CChangeTime : " + CChangeTime);
                     if (CChangeTime >= rt.Time)
                     {
                         CChangeTime = 0;
-
+                        //Debug.Log("Timing = false");
                         Timing = false;
-
                         cc.CSpeed.Speed = speed0;
                         cc.CSpeed.SpeedAcceleration = speedA0;
-
                         speed0 = 0;
                         speedA0 = 0;
+                        if (!UpperRouteDid)
+                        {
+                            UpperRoute();
+                            UpperRouteDid = true;
+                        }
+                       
                     }
                 }
                 else
                 {
-                    if (Vector3.Distance(transform.position, NextRoute) < 0.15f/*0.1*/)
+                    if (Vector3.Distance(transform.position, NextRoute) < 0.3)
                     {
+                        
                         //Debug.Log("Dis");
 
-
-
                         UpperRoute();
-
+                        
                         if (rt.Time != 0)
                         {
                             Timing = true;
+                            //Debug.Log("Timing = true");
                             speed0 = cc.CSpeed.Speed;
                             speedA0 = cc.CSpeed.SpeedAcceleration;
                             cc.CSpeed.Speed = 0;
                             cc.CSpeed.SpeedAcceleration = 0;
                             //Debug.Log("timing true");
                         }
+
+
 
 
 
@@ -255,19 +265,21 @@ public class TargetEquation : MonoBehaviour
 
 
     }
+    
     private void Update()//was fixed, (delta time)
     {
 
         float Delta = Time.deltaTime;
+
         CheckChange();
-        
-        
-        transform.Rotate(0,cc.RotDir* Delta * cc.RotSpeed, 0);
-        transform.Translate((NextRoute - CurrentRoute).normalized * cc.CSpeed.Speed * Delta, Space.World);
+
+        transform.Rotate(0, cc.RotDir * Delta * cc.RotSpeed, 0);
+            transform.Translate((NextRoute - CurrentRoute).normalized * cc.CSpeed.Speed * Delta, Space.World);
 
         
-        
-        
+
+
+
     }
     
     public void EquationBlink(byte Attention, int NoOrder, bool Brackets)
