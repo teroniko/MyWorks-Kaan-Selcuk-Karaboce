@@ -1,10 +1,11 @@
-﻿using System.Collections;
+﻿using GoogleMobileAds.Api;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.Playables;
-using UnityEngine.Timeline;
+using UnityEngine.Purchasing;
+using UnityEngine.Purchasing.Extension;
 using UnityEngine.UI;
 
 public class Main : MonoBehaviour
@@ -57,8 +58,8 @@ public class Main : MonoBehaviour
     public GameObject NextLevelButton;
 
     private TMP_Text LastBallUI;
-    private Color BlueAddition = new Color(0.3212531f, 0.3212531f, 0.8867924f);
-    private Color RedSubtraction = new Color(0.9056604f, 0.1742969f, 0.1742969f);
+    public Color BlueAddition/* = new Color32(46,0,255,255)*//*new Color(0.3212531f, 0.3212531f, 0.8867924f)*/;
+    public Color RedSubtraction/* = new Color(0.9056604f, 0.1742969f, 0.1742969f)*/;
 
     
 
@@ -72,7 +73,7 @@ public class Main : MonoBehaviour
     private float spaceBetweenAPD = 0.3f;//spaceBetweenArrowPathDot
     private byte ArrowOperation = 0;//+,-,*,/
     private byte StickArrowOperation = 0;
-    public TMP_Text LevelText;
+    public TMP_Text LevelInfo;
     private sbyte StickedBlueCount;
     private sbyte ArrowBlueCount;
     private sbyte CurrentBlueCount = 0;
@@ -80,7 +81,6 @@ public class Main : MonoBehaviour
     public RectTransform InformFinger;
     public RectTransform FingerPos1;
     public RectTransform FingerPos2;
-    public LevelType CurrentLevelType;
     public GameObject Menu;
     public GameObject Game;
     public Image ThrowAMouseArea;
@@ -94,7 +94,7 @@ public class Main : MonoBehaviour
     public TMP_Text ArcheryTextInfo;
     public TMP_Text MathTextInfo;
     public TMP_Text CLevelTypeText;
-    public Image NextTrainingText;
+    //public Image NextTrainingText;
     public TMP_Text[] NumberShower;
     public Image[] GuideUIArrow0;
     public Image[] GuideUIArrowTop;
@@ -125,12 +125,12 @@ public class Main : MonoBehaviour
     public TMP_Text StickedANumberShower;
     private GuideTarget[] GTs = new GuideTarget[2];
     public Image CurrentBallShower;
-    public static bool TrainingAllLevelFinished=false;
+    //public static bool TrainingAllLevelFinished=false;
     private float CanvasScalerRatio;
     private float MaxFingerSlideDis = 75;
     private float WidthRatio;
     public AudioSource AudioS;
-    
+
     public AudioClip ArrowThrowing0;
     public AudioClip BubbleHit;
     public AudioClip CylinderHit;
@@ -141,6 +141,105 @@ public class Main : MonoBehaviour
     //public TimelineClipExtensions timeline;
     //public ushort BallsUINextAmmo;
     private FracNo OldFracNo;
+    public float PopEffectDis = 0.15f;
+    public float PopEffectBallSize = 1.2f;
+    public bool DoPop = false;
+    public Slider DifficultySlider;
+    private ushort TrainingLastLevel = 7;
+    public int TrainingLevelNo = 1;
+    private bool TrainingFinished = false;
+    public bool TrainingLevels = false;
+    private List<Difficulty> Difficulties = new List<Difficulty>();
+    public Difficulty CurrentDifficulty;
+    public TMP_Text GameSpecsText;
+    public Image GameSpecsImage;
+    public bool TrainingCompleted = false;
+    private float RefResolutionX = 0;
+    public RectTransform GameGuideRect;
+    public GameObject Terrain;
+    public bool EnterRandomNums;//true
+    public TMP_Text NextLevelBText;
+    private ushort[] MathScores;
+    private ushort ScoreCount=15;//(10du 2'ye tam bölünebilmeli idi), 3'e bölünebilmeli
+    public TMP_Text ScoreText;
+    public ushort CurrentMathScore;
+    public TMP_Text MathLevelText;//Math Degree Text
+    private ushort MathLevelPoint=0;
+    private bool PlayedOnce = false;
+    private Color TheYellow = new Color32(0xFF, 0xB3, 0x00, 0xFF);
+    public Color MenuYellow;
+    public Color MenuOrange;
+    private IEnumerator CloseGameG;
+    public Image CloseSettingBox;
+    public Button ShareButton;
+    public int PlayTicketCount;
+    public TMP_Text PlayTicketText;
+    public Image PlayTicketImage;
+
+    public Image ShareBGift;
+    public GameObject PlayTicketButtons;
+    public GameObject ShareButtons;
+    public GameObject LoadingPage;
+    public Image FacebookGift;
+    public Button FacebookButton;
+    public GameObject ResetGameButton;
+    public Material ArrowPathColor;
+
+
+    public class Difficulty
+    {
+        public bool[] Sign;
+        public short RangeUp;
+        public short RangeDown;
+        public ushort MaxTime;//second
+        public bool RandomNumbers;
+        public bool MustUseAllArrows;
+        public ushort MaxScore;
+        public byte MinThrow;
+        public byte FBallCount;
+        public sbyte ArrowBlueCount;
+        public sbyte StickedBlueCount;
+        public Difficulty(bool[] Sign, short RangeUp, short RangeDown, ushort MaxTime, bool RandomNumbers, bool MustUseAllArrows, ushort MaxScore, byte MinThrow, byte FBallCount, sbyte ArrowBlueCount, sbyte StickedBlueCount)
+        {
+            this.Sign = Sign;
+            this.RangeUp = RangeUp;
+            this.RangeDown = RangeDown;
+            this.MaxTime = MaxTime;
+            this.RandomNumbers = RandomNumbers;
+            this.MustUseAllArrows = MustUseAllArrows;
+            this.MaxScore = MaxScore;
+            this.MinThrow = MinThrow;
+            this.FBallCount = FBallCount;
+            this.ArrowBlueCount = ArrowBlueCount;
+            this.StickedBlueCount = StickedBlueCount;
+        }
+        public string DifficultySpecs(string MaxTime)
+        {
+            
+            string RandomNumbersInfo = "";
+            if (RandomNumbers)
+            {
+                RandomNumbersInfo = "\nRandom numbers at every restart";
+            }
+            string UseAll = "\nMust not use all the arrows";
+            if (MustUseAllArrows)
+            {
+                UseAll = "\nMust use all the arrows";
+            }
+
+            return 
+                //"Signs : + -\n" +
+             "Numbers are between " + RangeDown + ", " + RangeUp +
+            "\nMax time is : " + MaxTime +
+            RandomNumbersInfo +
+            UseAll
+            //+"\nMay hit same ball multiple times"
+            + "\nMax score : " + MaxScore
+            + "\nArrows : " + ArrowBlueCount + " Blue + " + (MinThrow - ArrowBlueCount) + " Red or Vice Versa"
+            + "\nBalls : " + StickedBlueCount + " Blue + " + (FBallCount - StickedBlueCount) + " Red or Vice Versa"
+            ;
+        }
+    }
     
     public class GuideArrow
     {
@@ -158,123 +257,14 @@ public class Main : MonoBehaviour
     {
         public Image Target;
         public bool Active;
+        public IEnumerator Timer;
         public GuideTarget(Image Target, bool Active)
         {
             this.Target = Target;
             this.Active = Active;
         }
     }
-    public class LevelType
-    {
-        public int LastLevel;
-        public int LevelNo = 1;
-        
-        public string Type = "";//enum ile yapılacak
-        public TMP_Text TextInfo;
-        public bool Finished = false;
-        public int[] LevelDurations;
-        public LevelType(string Type, int LastLevel, TMP_Text TextInfo)
-        {
-            this.Type = Type;
-            this.LastLevel = LastLevel;
-            this.TextInfo = TextInfo;
-            LevelNo = 1;
-            LevelNo = PlayerPrefs.GetInt(Type + "LevelNo");
-            if (LevelNo == 0)
-            {
-                LevelNo = 1;
-            }
-            //else if(AtLastLevel())
-            //{
-
-
-            //    if (PlayerPrefs.GetInt(Type + " Finished") == 0)
-            //    {
-            //        Finished = false;
-            //    }
-            //    else
-            //    {
-            //        Finished = true;
-            //        InfoTextOn();
-            //    }
-            //}
-
-            if (PlayerPrefs.GetInt(Type + " Finished") == 0)
-            {
-                Finished = false;
-            }
-            else
-            {
-                Finished = true;
-                InfoTextOn();
-            }
-
-
-
-
-            LevelDurations = new int[LastLevel];
-            for(int i = 0; i < LevelDurations.Length; i++)
-            {
-                LevelDurations[i] = 0;
-            }
-        }
-        public void SaveLevelDuration()
-        {
-            //Archery Level3 Duration
-            PlayerPrefs.SetInt(Type + " Level" + LevelNo + " Duration", LevelDurations[LevelNo - 1]);
-        }
-        public void LevelChange(bool Up)
-        {
-            SaveLevelDuration();
-            if (Up)
-            {
-                LevelNo++;
-            }
-            else
-            {
-                LevelNo--;
-            }
-
-            if (LevelNo > LastLevel)
-            {
-                LevelNo = LastLevel;
-                InfoTextOn();
-                PlayerPrefs.SetInt(Type+" Finished", 1);
-                //if (Type != "Training")
-                {
-                    Finished = true;
-
-                }
-                if (Type == "Training")
-                {
-                    TrainingAllLevelFinished = true;
-                }
-            }
-            else if (LevelNo < 1)
-            {
-                LevelNo = 1;
-            }
-
-            PlayerPrefs.SetInt(Type + "LevelNo", LevelNo);
-
-
-        }
-        private void InfoTextOn()
-        {
-            if (TextInfo)
-            {
-
-                TextInfo.enabled = true;
-            }
-        }
-        public bool AtLastLevel()
-        {
-            return LevelNo == LastLevel;
-        }
-    }
-    private LevelType Archery;
-    private LevelType Math;
-    private LevelType Training;
+    
     private class IncompleteNumber
     {
         public FracNo No;
@@ -317,12 +307,13 @@ public class Main : MonoBehaviour
                 //Objects[i].GetComponent<Arrow>().ArrowNo = new FracNo(0, 0, 1);
                 Objects[i].GetComponent<Arrow>().Number.SetActive(false);
                 Objects[i].GetComponent<Arrow>().NoOrder = 0;
+                Objects[i].GetComponent<Arrow>().PopCheck();
+                Objects[i].GetComponent<Arrow>().DidHit = false;
 
                 //sadece bir ballun layerı değişecek:
                 Objects[i].gameObject.layer = LayerMask.NameToLayer("Default");
                 Objects[i].transform.GetChild(0).gameObject.layer = LayerMask.NameToLayer("Default");
                 Objects[i].transform.GetChild(1).gameObject.layer = LayerMask.NameToLayer("Default");
-
 
 
             }
@@ -386,55 +377,121 @@ public class Main : MonoBehaviour
         }
     }
 
-    public void NextLevel()
+
+
+    public void TrainingLevelChange(bool Up)
     {
-        CurrentLevelType.LevelChange(true);
-        SetLevel();
+        if (Up)
+        {
+            TrainingLevelNo++;
+        }
+        else
+        {
+            TrainingLevelNo--;
+        }
+        
+        if (TrainingLevelNo > TrainingLastLevel)
+        {
+            
+            TrainingLevelNo = TrainingLastLevel;
+            PlayerPrefs.SetInt("Training Finished", 1);
+            
+            TrainingCompleted = true;
+            TrainingFinished = true;
+            
+            
+        }
+        else if (TrainingLevelNo < 1)
+        {
+            TrainingLevelNo = 1;
+        }
+
+
+
+    }
+
+    public void TrainingNextLevel()
+    {
+        TrainingLevelChange(true);
+        NextLevel();
+
         
     }
-    public void PreviousLevel()
+    public void TrainingPreviousLevel()
     {
-        CurrentLevelType.LevelChange(false);
+        TrainingLevelChange(false);
         SetLevel();
     }
-    private void IfTrained()
+    private IEnumerator RulesBlink()
     {
-        if (!Training.Finished)
+        bool blink = false;
+        for(int i = 0; i < 8; i++)
         {
-            CurrentLevelType = Training;
+            yield return new WaitForSecondsRealtime(0.2f);
+            blink = !blink;
+            if (blink)
+            {
+                GameSpecsImage.color = MenuYellow;
+            }
+            else
+            {
+                GameSpecsImage.color = MenuOrange;
+            }
         }
+        GameSpecsImage.color = MenuOrange;
+        CloseGameG = CloseGameGuideLater(2.3f);
+        StartCoroutine(CloseGameG);
     }
-    public void ArcheryFocus()
+    private IEnumerator CloseGameGuideLater(float time)
     {
-        CurrentLevelType = Archery;
+        yield return new WaitForSecondsRealtime(time);
+        CloseGameGuide();
+    }
+    public void CloseGameGuide()
+    {
+        GameGuideUI.SetActive(false);
+        PlayTicketButtons.SetActive(false);
+        ShareButtons.SetActive(false);
 
-        LevelButtonT.SetActive(false);
-        IfTrained();
-        CLevelTText();
-        SetLevel();
     }
-    public void MathFocus()
+    public void Play()
     {
-        CurrentLevelType = Math;
-        LevelButtonT.SetActive(false);
-        IfTrained();
-        CLevelTText();
-        SetLevel();
-    }
-    private void CLevelTText()
-    {//leveltype içine koyulup ordan değiştirilebilir belki:
-        CLevelTypeText.text = CurrentLevelType.Type;
+        if (TrainingCompleted)
+        {
+            if (!PlayedOnce)
+            {
+                PlayedOnce = true;
+                PlayerPrefs.SetInt("PlayedOnce", 1);
+                
+                StartCoroutine(RulesBlink());
+                ShowGameGuide("Always read the rules before you play!", false, false);
+            }
+            else
+            {
+                TrainingLevels = false;
+                LevelButtonT.SetActive(false);
+                EnterRandomNums = true;//silinecek bug yoksa//TODO
+                CloseGameGuide();
+                SetLevel();
+            }
+        }
+        else
+        {
+            OpenTraining();
+        }
+        ShowMathP = false;
+        ShowMathPoints();
     }
     public void OpenMenu()
     {
-        if (CurrentLevelType != null)
-        {
-            CurrentLevelType.SaveLevelDuration();
-        }
         TE.enabled = false;
-
+        HowToTArrowPosUpdate = false;
         Menu.SetActive(true);
         Game.SetActive(false);
+
+        //CloseGameGuide();
+
+
     }
     public void CloseGuideArrows()
     {
@@ -454,52 +511,182 @@ public class Main : MonoBehaviour
         {
             gt.Target.enabled = false;
             gt.Active = false;
+            if (gt.Timer!=null)
+            {
+
+                StopCoroutine(gt.Timer);
+            }
         }
     }
     
     public void OpenTraining()
     {
-        CurrentLevelType = Training;
-        
-        if (Training.Finished)
+        TrainingLevels = true;
+        if (TrainingCompleted)
         {
             LevelButtonT.SetActive(true);
-            CurrentLevelType.LevelNo = 1;
+
         }
-
-
-        CLevelTText();
+        if (TrainingFinished)
+        {
+            TrainingLevelNo = 1;
+            TrainingFinished = false;
+        }
         SetLevel();
+    }
+    public void Score0()
+    {
+        if (!TrainingLevels&& NextLevelBText.text != "Try Again")
+        {
+            CloseGameG = CloseGameGuideLater(1);
+            StartCoroutine(CloseGameG);
+            ScoreShower(0);
+        }
+        if (NextLevelBText.text == "Try Again")
+        {
+            CloseGameGuide();
+        }
+    }
+    public void ComingSoonButton()
+    {
+        ShowGameGuide("<u>If enough support came : </u>\n× and ÷ signs\nNew difficulty level for faster cylinder\nFor app store", false,false);
+        //\nWider range difficulty levels
+        CloseSettingBox.enabled = true;
+    }
+    public void CloseSettingB()
+    {
+        if (!isProcessing)
+        {
+            CloseSettingBox.enabled = false;
+            CloseGameGuide();
+
+        }
     }
     public void Restart()
     {
         if (RestartButImage.color == RestartButColor)
         {
+
+            CurrentMathScore = 0;
+            
+            IsItRandom();
+            Score0();
             SetLevel();
+            
+
         }
     }
+    private void IsItRandom()
+    {
+        EnterRandomNums = CurrentDifficulty.RandomNumbers;
+        
+
+    }
+    public void NextLevel()
+    {
+        if (TrainingLevels && TrainingFinished)
+        {
+            OpenMenu();
+            CloseGameGuide();
+        }
+        else
+        {
+            CloseGameGuide();
+            if (NextLevelBText.text == "Play Again")//Won
+            {
+                EnterRandomNums = true;
+            }
+            else
+            {
+                IsItRandom();
+                
+            }
+            
+
+
+            SetLevel();
+
+        }
+    }
+    private void SaveMathPoint(int index, int point)
+    {
+        PlayerPrefs.SetInt("MathPoint " + index, point);
+        MathLevelPoint += (ushort)point;
+    }
+    
+    private void MathPoints(bool EnterZero)
+    {
+        if (EnterZero)
+        {
+            MathLevelPoint = 0;
+            for (int i = MathScores.Length - 1; 0 < i; i--)
+            {
+
+                MathScores[i] = MathScores[i - 1];
+
+                SaveMathPoint(i, MathScores[i]);
+
+            }
+            MathScores[0] = 0;
+            SaveMathPoint(0, MathScores[0]);
+        }
+        else
+        {
+            MathScores[0] = CurrentMathScore;
+            SaveMathPoint(0, MathScores[0]);
+        }
+
+        UpdateMainScoreText();
+
+        //foreach (ushort u in MathScores)
+        //{
+        //    Debug.Log(u);
+        //}
+    }
+    private void UpdateMainScoreText()
+    {
+        MathLevelText.text = "<size=160%>Math Level</size=160%>\n<size=370%>"+MathLevelPoint+"</size=370%>";
+    }
+    private bool ShowMathP = true;//ShowMathPoints
+    public void ShowMathPoints()
+    {
+        ShowMathP = !ShowMathP;
+        if (ShowMathP)
+        {
+            UpdateMainScoreText();
+            MathLevelText.lineSpacing = -150;
+
+        }
+        else
+        {
+            MathLevelText.lineSpacing = 0;
+            MathLevelText.text = "<size=170%><u>Last " + MathScores.Length + " Level</size=170%></u>";
+            int DivideRange = 3;//2 idi
+            for (int i = 0; i < MathScores.Length / DivideRange/*2idi*/; i++)
+            {
+                MathLevelText.text += "\nLevel " + (i + 1) + " Point : " + MathScores[i];
+                MathLevelText.text += "  Level " + (i + 1+ MathScores.Length / DivideRange) + " Point : " + MathScores[i + MathScores.Length / DivideRange];
+                MathLevelText.text += "  Level " + (i + 1 + MathScores.Length*2 / DivideRange) + " Point : " + MathScores[i + MathScores.Length / DivideRange];
+
+            }
+
+        }
+    }
+    
     public void SetLevel()
     {
-        
-        
-        
+        SliderDifficulty();
         OOAmmoText.enabled = false;
-        
+
         CloseGuideArrows();
         CloseGuideTargets();
 
         ActiveNumberShowers(false);
 
         NextLevelButton.SetActive(false);
-        if (CurrentLevelType.Finished && CurrentLevelType.Type != "Training" || TrainingAllLevelFinished)
-        {
-            TrainingAllLevelFinished = false;
-            OpenMenu();
-        }
-        else
-        {
-            NewLevel();
-        }
+
+
+        NewLevel();
         if (Arrows.Current)
         {
 
@@ -508,17 +695,16 @@ public class Main : MonoBehaviour
 
 
         //CurrentLevelType.TextInfo < bu iki kez kullanılıyor
-        
+
         UpdateNextAShower();
         StartCoroutine(NextArrowShower());
         //her level türünde son bölümü geçince menü açılabilir olması gerekiyor
         //training finished olsa bile açılıp kapanabilmesi gerekiyor
         //
 
-        if (CurrentLevelType.Type == "Training" && CurrentLevelType.LevelNo == 5)
-        {
-            SetCorrectFracIndex(0);
-        }
+
+        
+
     }
     public IEnumerator BowToAmmo()
     {
@@ -555,7 +741,7 @@ public class Main : MonoBehaviour
     private void CloseTrainingUIs()
     {
         ActiveNumberShowers(false);
-        GameGuideUI.SetActive(false);
+        //CloseGameGuide();
         NextGuideButton.SetActive(false);
         PlusOrMinus.enabled = false;
     }
@@ -610,9 +796,25 @@ public class Main : MonoBehaviour
 
     }
     
+    public void ShowGameGuide(string s, bool Thin, bool Wide)
+    {
+        GameGuideUI.SetActive(true);
+        GameGuideText.text = s;
+        float SizeY = 7;
+        float SizeX = 3;
+        if (Thin)
+        {
+            SizeY = 12;
+        }
+        if (Wide)
+        {
+            SizeX = 1.7f;
+        }
+        GameGuideRect.sizeDelta = new Vector2(/*GameGuideRect.sizeDelta.x*/RefResolutionX / SizeX, RefResolutionX /SizeY);
+    }
     public void TrainingNext()
     {
-        int LevelNo = CurrentLevelType.LevelNo;
+        int LevelNo = TrainingLevelNo;
         GuideCount--;
         switch (GuideCount)
         {
@@ -630,17 +832,12 @@ public class Main : MonoBehaviour
                     case 2:
 
                         
-                        NextLevel();
+                        TrainingNextLevel();
 
                         break;
                     case 3:
 
 
-                        //ThrowAMouseArea.enabled = true;
-                        //NextGuideButton.SetActive(false);
-                        //GameGuideUI.SetActive(false);
-                        //StartCoroutine(GuideTargetUI(StickedArrows.Current.GetComponent<Arrow>().Number, false, 0));
-                        
                         Arrows.Objects[0].GetComponent<Arrow>().CurrentArrowUpdate();
                         TE.EquationUpdate(0, false, false);
 
@@ -657,7 +854,7 @@ public class Main : MonoBehaviour
 
 
                         IfWon();
-                        GameGuideUI.SetActive(false);
+                        CloseGameGuide();
                         NextLevelButton.SetActive(true);
                         
                         break;
@@ -666,6 +863,13 @@ public class Main : MonoBehaviour
                         IfWon();
 
 
+                        break;
+                    case 6:
+
+                        TrainingNextLevel();
+                        break;
+                    case 7:
+                        CloseGameGuide();
                         break;
                 }
                 break;
@@ -703,15 +907,25 @@ public class Main : MonoBehaviour
 
 
                         break;
+                    case 6:
+                        CloseGuideArrows();
+                        NextGuideButton.SetActive(false);
+                        GTs[0].Timer = GuideTargetUI(TE.Number, false, 0);
+                        StartCoroutine(GTs[0].Timer);
+                        ThrowAMouseArea.enabled = true;
+                        break;
+                    case 7:
+                        StartCoroutine(GuideArrowUI(16, false));
+                        NextGuideButton.SetActive(false);
+                        
+                       
+                        ShowGameGuide("Equal to the target",false, false);
+                        break;
                 }
                 break;
             case 2:
 
-                //level3:
-                //CloseGuideArrows();
-                //CloseGuideTargets();
-                //PlusOrMinus.enabled = true;
-                //StartCoroutine(GuideArrowUI(1, false, 0, true));
+                
 
                 switch (LevelNo)
                 {
@@ -723,15 +937,15 @@ public class Main : MonoBehaviour
                         
                         break;
                     case 3:
-
-                        StartCoroutine(GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0));
+                        GTs[0].Timer = GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0);
+                        StartCoroutine(GTs[0].Timer);
                         NumberShower[1].enabled = false;
                         NextGuideButton.SetActive(false);
-                        GameGuideUI.SetActive(false);
+                        CloseGameGuide();
                         ThrowAMouseArea.enabled = true;
                         break;
                     case 4:
-                        //CloseGuideArrows();
+                        
                         CloseGuideTargets();
                         ActiveNumberShowers(false);
                         NextGuideButton.SetActive(false);
@@ -762,6 +976,12 @@ public class Main : MonoBehaviour
 
 
                         break;
+                    
+                    case 6:
+                        StartCoroutine(GuideArrowUI(14, false));
+                        NextGuideButton.SetActive(false);
+                        CloseGameGuide();
+                        break;
                 }
 
                 break;
@@ -773,7 +993,7 @@ public class Main : MonoBehaviour
 
                         CloseGuideArrows();
                         StartCoroutine(GuideArrowUI(11, false));
-                        GameGuideUI.SetActive(false);
+                        CloseGameGuide();
                         NextGuideButton.SetActive(false);
 
                         break;
@@ -788,6 +1008,7 @@ public class Main : MonoBehaviour
                         TrainingOpResult(false);
                         TrainingOperationA++;
                         break;
+                    
                 }
                 break;
             case 4:
@@ -797,8 +1018,8 @@ public class Main : MonoBehaviour
                         NextGuideButton.SetActive(true);
                         CloseGuideArrows();
                         CloseGuideTargets();
-                        GameGuideText.text = "Every ball sticked to middle cylinder have a number too. They are equations numbers.";
-                        GameGuideUI.SetActive(true);
+                       
+                        ShowGameGuide("Every ball sticked to middle cylinder have a number too. They are equation numbers", false, false);
                         break;
                     case 4:
                         CloseGuideArrows();
@@ -809,10 +1030,13 @@ public class Main : MonoBehaviour
                         SetCorrectFracIndex(0);
                         TE.ccs[0].RotSpeed = 15;
                         
-
-
-
-
+                        break;
+                    case 5:
+                        CloseGuideArrows();
+                        CloseGameGuide();
+                        ThrowAMouseArea.enabled= true;
+                        SetCorrectFracIndex(0);
+                        NextGuideButton.SetActive(false);
                         break;
                 }
 
@@ -821,12 +1045,8 @@ public class Main : MonoBehaviour
 
                 //level4:
                 
-
-
-
-
                 StartCoroutine(GuideArrowUI(11, true));
-                GameGuideUI.SetActive(false);
+                CloseGameGuide();
                 NextGuideButton.SetActive(false);
 
                 break;
@@ -834,11 +1054,9 @@ public class Main : MonoBehaviour
                 //level4:
                 CloseGuideArrows();
                 //SetCorrectFracIndex(1);
-
-
                 NextGuideButton.SetActive(true);
-                GameGuideText.text = "Be careful to the equation, red means minus number.";
-                GameGuideUI.SetActive(true);
+                
+                ShowGameGuide("Be careful to the equation, red means minus number", false, false);
                 PlusOrMinus.enabled = false;
 
 
@@ -850,7 +1068,7 @@ public class Main : MonoBehaviour
                 //level4:
                 CloseGuideArrows();
                 BlueShowed = false;
-                GameGuideUI.SetActive(false);
+                CloseGameGuide();
 
                 StartCoroutine(GuideArrowUI(11, true));
                 NextGuideButton.SetActive(false);
@@ -903,21 +1121,11 @@ public class Main : MonoBehaviour
 
             }
         }
-        //else
-        //{
-        //    if (CorrectFracIndex == 0)
-        //    {
-        //        CorrectFracIndex = 1;
-        //    }
-        //    else
-        //    {
-        //        CorrectFracIndex = 0;
-        //    }
-        //}
 
         CloseGuideTargets();
         CloseGuideArrows();
-        StartCoroutine(GuideTargetUI(StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number, false, NextNumbersArrayIndex));
+        GTs[NextNumbersArrayIndex].Timer = GuideTargetUI(StickedArrows.Objects[CorrectFracIndex].GetComponent<Arrow>().Number, false, NextNumbersArrayIndex);
+        StartCoroutine(GTs[NextNumbersArrayIndex].Timer);
     }
 
     private IEnumerator WaitAndBringResult(int result)
@@ -1022,10 +1230,12 @@ public class Main : MonoBehaviour
     //arrowtype yerine de 3 4 tip farklı değer alabilen değer yapılacak int ya da enum olabilir
     public IEnumerator GuideArrowUI(byte ArrowType, bool OperationColor)
     {
-
         yield return new WaitForSecondsRealtime(0.01f);
         int SArrowNo = 0;
-        Color col = Color.black;
+        Color col = TheYellow;//FFB300
+
+
+        float StartEndSpeed = 1f;//1
         byte Operation = 0;
 
         switch (OperationColor)
@@ -1046,7 +1256,7 @@ public class Main : MonoBehaviour
                 }
 
 
-
+                StartEndSpeed = 0.7f;
                 break;
 
         }
@@ -1054,7 +1264,8 @@ public class Main : MonoBehaviour
 
         if (ArrowType == 10)//mouse
         {
-            col = BlueAddition;
+            //col = BlueAddition;
+            col = ArrowPathColor.color;
         }
 
         bool GoFromStartToEnd = false;
@@ -1069,7 +1280,6 @@ public class Main : MonoBehaviour
         
         float OtherTextFontSize=0;
         float fontSizeDif = 0;
-
 
         byte MovableAndStopped = 0;
         //0 both movable
@@ -1119,27 +1329,37 @@ public class Main : MonoBehaviour
                 GoFromStartToEnd = true;
 
                 break;
-            //case 0:
-                
-            //    a = StickedArrows.Objects[0].GetComponent<Arrow>();
-                
-            //    ArrowHeadV = LetterPos(TE.EquationText, a.TextPlace, a.TextPlace + GetSpaceCountOfNo(a.ArrowNo));
-                
-            //    BackArrow = a.Number.GetComponent<RectTransform>();
-            //    MovableAndStopped = 0;
-            //    GoFromStartToEnd = true;
-            //    Space = 0.95f;
-            //    break;
+            case 0:
+                a = Arrows.Objects[0].GetComponent<Arrow>();
+
+                ArrowHeadV = LetterPos(TE.EquationText, a.TextPlace, a.TextPlace + GetSpaceCountOfNo(a.ArrowNo));
+
+                BackArrow = a.Number.GetComponent<RectTransform>();
+                MovableAndStopped = 1;
+                GoFromStartToEnd = true;
+                Space = 0.95f;
+                break;
             //case 1:
 
             //    ArrowHeadV = LetterPos(TE.EquationText, 0, GetSpaceCountOfNo(TE.No) - 1);
             //    BackArrow = TE.Number.GetComponent<RectTransform>();
             //    MovableAndStopped = 1;
             //    break;
-            case 2:
-                //bişey yok
+            case 1:
 
-                RectTransform ArrowHeadRect= BallsUI.Current.GetComponent<RectTransform>();
+                RectTransform ArrowHeadRect = BallsUI.Objects[0].GetComponent<RectTransform>();
+                //ArrowHead = BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>();
+                ArrowHeadV = ArrowHeadRect.localPosition + (Vector3)ArrowHeadRect.sizeDelta / 2;
+                //ArrowHeadV = ArrowHead.localPosition;
+                BackArrowV = GameGuideUI.GetComponent<RectTransform>().localPosition + (ArrowHeadV - GameGuideUI.GetComponent<RectTransform>().localPosition) * 0.2f;
+                Space = 0.8f;
+                MovableAndStopped = 2;
+                GoFromStartToEnd = true;
+                StartEndSpeed = 0.8f;
+                break;
+            case 2:
+
+                ArrowHeadRect= BallsUI.Current.GetComponent<RectTransform>();
                 //ArrowHead = BallsUI.Objects[BallsUI.Next].GetComponent<RectTransform>();
                 ArrowHeadV = ArrowHeadRect.localPosition + (Vector3)ArrowHeadRect.sizeDelta / 2;
                 //ArrowHeadV = ArrowHead.localPosition;
@@ -1147,6 +1367,7 @@ public class Main : MonoBehaviour
                 Space = 0.8f;
                 MovableAndStopped = 2;
                 GoFromStartToEnd = true;
+                StartEndSpeed = 0.8f;
                 break;
             //case 3:
 
@@ -1159,7 +1380,6 @@ public class Main : MonoBehaviour
             //    MovableAndStopped = 2;
             //    break;
             case 4:
-                //bişey yok
                 SArrowNo = 0;
                 ArrowHead = NumberShower[SArrowNo/*0*/].rectTransform;
                 BackArrowV = LetterPos(TE.EquationText, TE.EquationText.text.Length - GetSpaceCountOfNo(TE.Equivalent), TE.EquationText.text.Length - 1);
@@ -1170,9 +1390,9 @@ public class Main : MonoBehaviour
                 Vector2 EqualityPosMid = NumberShower[2].rectTransform.localPosition - WESpace;
 
                 ArrowHeadV = EqualityPosMid;
+                col = Color.white;
                 break;
             case 5:
-                //bişey yok
                 SArrowNo = 1;
 
                 ArrowHead = NumberShower[SArrowNo/*1*/].rectTransform;
@@ -1184,6 +1404,7 @@ public class Main : MonoBehaviour
                 EqualityPosMid = NumberShower[2].rectTransform.localPosition + WESpace;
 
                 ArrowHeadV = EqualityPosMid;
+                col = Color.white;
 
                 break;
                 
@@ -1264,6 +1485,30 @@ public class Main : MonoBehaviour
                 
 
                 break;
+            case 14:
+                MinLengthArrow = 20;
+                ArrowHeadV = LetterPos(TE.EquationText, 0, GetSpaceCountOfNo(TE.No));
+                MovableAndStopped = 2;
+                GoFromStartToEnd = true;
+                BackArrowV = TE.NumberText.rectTransform.localPosition;
+                Space = 0.95f;
+                StartEndSpeed = 0.7f;
+                break;
+            case 15:
+                ArrowHeadV = LetterPos(TE.EquationText, TE.EquationText.text.Length - GetSpaceCountOfNo(TE.Equivalent), TE.EquationText.text.Length - 1);
+                BackArrowV = GameGuideUI.GetComponent<RectTransform>().localPosition + (ArrowHeadV - GameGuideUI.GetComponent<RectTransform>().localPosition) * 0.2f;
+                Space = 0.8f;
+                MovableAndStopped = 3;
+                GoFromStartToEnd = true;
+                StartEndSpeed = 0.85f;
+                break;
+            case 16:
+                ArrowHeadV = LetterPos(TargetNoText, TargetNoText.text.Length - GetSpaceCountOfNo(TE.Equivalent), TargetNoText.text.Length - 1);
+                BackArrowV = GameGuideUI.GetComponent<RectTransform>().localPosition + (ArrowHeadV - GameGuideUI.GetComponent<RectTransform>().localPosition) * 0.2f;
+                Space = 0.8f;
+                MovableAndStopped = 3;
+                GoFromStartToEnd = true;
+                break;
 
         }
         GuideArrow GA;
@@ -1302,7 +1547,7 @@ public class Main : MonoBehaviour
             
         }
 
-        float StartEndSpeed = 1;
+        
         float StartToEndPos = 0;
 
 
@@ -1368,7 +1613,11 @@ public class Main : MonoBehaviour
                         }
                         break;
                     case 3:
-                        Stable = true;
+                        if (!GoFromStartToEnd)
+                        {
+
+                            Stable = true;
+                        }
                         break;
                 }
 
@@ -1408,7 +1657,7 @@ public class Main : MonoBehaviour
                                     ArrowHead.anchoredPosition = EndPos;
                                     NumberShower[SArrowNo].fontSize = OtherTextFontSize;
                                 }
-                                if (!(ArrowType == 4 || ArrowType == 5))
+                                if (!(ArrowType == 4 || ArrowType == 5||ArrowType==0))
                                 {
 
                                     NextGuideButton.SetActive(true);
@@ -1437,7 +1686,7 @@ public class Main : MonoBehaviour
                             else
                             {
                                 GA.Active = false;
-
+                                
                             }
 
 
@@ -1516,6 +1765,20 @@ public class Main : MonoBehaviour
             {
                 NextGuideButton.SetActive(true);
             }
+            if (ArrowType == 14)
+            {
+                NextGuideButton.SetActive(true);
+            }
+            if (ArrowType == 0)
+            {
+                TE.ccs[0].RotSpeed = 0;
+                yield return new WaitForSecondsRealtime(1);
+
+                NextGuideButton.SetActive(true);
+                
+                ShowGameGuide("If you hit the middle cylinder, new number will be added to the equation as you see", false, false);
+                
+            }
         }
        
     }
@@ -1528,27 +1791,23 @@ public class Main : MonoBehaviour
         ThrowAMouseArea.enabled = true;
         TE.enabled = true;
         Menu.SetActive(false);
-        if (!Game.activeSelf)
-        {
-            Game.SetActive(true);
-            if (LevelDurationButton.activeSelf)
-            {
-                StartCoroutine(LevelDurationCounter());
-            }
-            
+        
 
-        }
+        Game.SetActive(true);
         CurrentBlueCount = 0;
         CurrentRedCount = 0;
         EquationNumbers.Clear();
         Levels();
         TE.SetNo();
+
         MinThrowForArrows = (ushort)(MinThrow + 1);
+
 
         Arrows.RestartArrows(ArrowsParent.transform);
         Arrows.SetReadyCount(MinThrowForArrows);
         Arrows.GetObject(false);
-        
+
+
         StickedArrows.RestartArrows(ArrowsParent.transform);
         StickedArrows.SetReadyCount(FBallCount);
         ArrowPath.Next = 0;
@@ -1558,32 +1817,43 @@ public class Main : MonoBehaviour
         CurrentBlueCount = 0;
         CurrentRedCount = 0;
         SetNextNumbers();
-        NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Next";
-
-
         
+
+
+
         Won.SetActive(false);
         CalculateEquation();
 
 
         TargetAndEquivalentSame();
         
+        
     }
+    private bool TargetEquivalentSame = false;
     private void TargetAndEquivalentSame()
     {
         //loopa girmesin hep eşit çıkarsa girer:
         if (TE.Equivalent.UpNo == TE.TargetNo.UpNo)//<çarpma bölmede burası editlenecek
         {
+            TargetEquivalentSame = true;
             SetLevel();
+            TargetEquivalentSame = false;
         }
     }
+    //public bool IsRandomNumbers = false;
     private void SetNextNumbers()
     {
         //Setting Incomplate Numbers: method yazılacak muhtemelen:
 
         BallsUI.SetReadyCount(MinThrow);
         BallsUI.RestartBallUIs();
-        NextNumbers = new IncompleteNumber[MinThrow];
+        //IsRandomNumbers = CurrentDifficulty.RandomNumbers || NextNumbers == null;
+        //if (IsRandomNumbers)
+        if(EnterRandomNums)
+        {
+            NextNumbers = new IncompleteNumber[MinThrow];
+
+        }
         List<ushort> ENumbersIndexes = new List<ushort>();
         for (ushort i = 0; i < FBallCount; i++)
         {
@@ -1591,103 +1861,38 @@ public class Main : MonoBehaviour
         }
         for (ushort i = 0; i < NextNumbers.Length; i++)
         {
-            ushort RandomNo = (ushort)Random.Range(0, ENumbersIndexes.Count);
-
-            NextNumbers[i] = new IncompleteNumber();
-            IncompleteNumber icn = NextNumbers[i];
-            icn.Index = ENumbersIndexes[RandomNo];
-            icn.No = RandomFrac(2, NoRange1, NoRange2);
-            //icn.No.Oparetion = 1;
-            ENumbersIndexes.RemoveAt(RandomNo);
-
-
             BallsUI.GetObject(true);
             GameObject NextBall = BallsUI.Current;
+            if (EnterRandomNums)
+            {
+                ushort RandomNo = (ushort)Random.Range(0, ENumbersIndexes.Count);
+
+                NextNumbers[i] = new IncompleteNumber();
+                IncompleteNumber icn = NextNumbers[i];
+                icn.Index = ENumbersIndexes[RandomNo];
+                icn.No = RandomFrac(2, NoRange1, NoRange2);
+                //icn.No.Oparetion = 1;
+                ENumbersIndexes.RemoveAt(RandomNo);
 
 
-            Color color = Color.white;
+
+                Color color = Color.white;
+                (NextNumbers[i].No.Oparetion, color) = SetColors(NextNumbers[i].No.Oparetion, ArrowOperation, ArrowBlueCount, MinThrow);
+
+
+
+
+
+                NextBall.GetComponent<Image>().color = color;
+                //BallUIParent şu an da fullscreen, fullscreen olmayıp bu pozisyon yeniden ayarlanacak:
+                NextBall.GetComponent<RectTransform>().anchoredPosition = new Vector2(NextBall.GetComponent<RectTransform>().sizeDelta.x * (NextNumbers.Length - i - 1), 0);
+                //NextBallsUI.Add(NextBall);
+
+                NextBall.GetComponentInChildren<TMP_Text>().text = FracNoToString(NextNumbers[i].No, false, false);
+
+
+            }
             //bu methodun aynısı setballda var optimize edilecek:
-
-
-
-
-
-
-
-            //silinecek:
-            //if (ArrowOperation > 1)
-            //{
-
-            //    switch (NextNumbers[i].No.Oparetion)
-            //    {
-            //        case 0:
-            //            if (ArrowBlueCount <= CurrentBlueCount)
-            //            {
-            //                color = RedSubtraction;
-            //                NextNumbers[i].No.Oparetion = 1;
-
-            //            }
-            //            else
-            //            {
-
-            //                color = BlueAddition;
-
-            //                NextNumbers[i].No.Oparetion = 0;
-            //                CurrentBlueCount++;
-            //            }
-            //            break;
-
-            //        case 1:
-
-            //            if (MinThrow - ArrowBlueCount <= CurrentRedCount)
-            //            {
-            //                color = BlueAddition;
-
-            //                NextNumbers[i].No.Oparetion = 0;
-            //            }
-            //            else
-            //            {
-            //                color = RedSubtraction;
-
-
-            //                NextNumbers[i].No.Oparetion = 1;
-            //                CurrentRedCount++;
-            //            }
-            //            break;
-            //    }
-
-            //}
-            //else
-            //{
-            //    color = BlueAddition;
-
-
-            //    NextNumbers[i].No.Oparetion = 0;
-            //}
-
-
-
-
-
-            (NextNumbers[i].No.Oparetion, color) = SetColors(NextNumbers[i].No.Oparetion, ArrowOperation, ArrowBlueCount, MinThrow);
-
-
-
-
-
-
-
-            //switch (NextNumbers[i].No.Oparetion)
-            //{
-            //    case 0: color = BlueAddition; break;
-            //    case 1: color = RedSubtraction; break;
-            //}
-            NextBall.GetComponent<Image>().color = color;
-            //BallUIParent şu an da fullscreen, fullscreen olmayıp bu pozisyon yeniden ayarlanacak:
-            NextBall.GetComponent<RectTransform>().anchoredPosition = new Vector2(NextBall.GetComponent<RectTransform>().sizeDelta.x * (NextNumbers.Length - i - 1), 0);
-            //NextBallsUI.Add(NextBall);
-
-            NextBall.GetComponentInChildren<TMP_Text>().text = FracNoToString(NextNumbers[i].No, false, false);
 
         }
 
@@ -1767,9 +1972,18 @@ public class Main : MonoBehaviour
             StickedArrows.GetObject(true);
             ArrowLoading(StickedArrows.Current);
             Arrow a = StickedArrows.Current.GetComponent<Arrow>();
+            if (!EnterRandomNums)
+            {
+                a.ArrowNo = a.OldArrowNo;
+            }
+            else
+            {
+                a.ArrowNo = RandomFrac(StickArrowOperation, NoRange1, NoRange2);
+                a.OldArrowNo = a.ArrowNo;
+            }
 
 
-            a.ArrowNo = RandomFrac(StickArrowOperation, NoRange1, NoRange2);
+
             SetBall(a, true);
             a.StickToCylinder(TE.transform, true);
 
@@ -1779,19 +1993,19 @@ public class Main : MonoBehaviour
             
         }
     }
-    private void LevelValues(byte ArrowOperation, byte StickArrowOperation, ushort MinThrow, ushort FBallCount, sbyte StickedBlueCount, sbyte ArrowBlueCount, short NoRange1, short NoRange2)
+    private void LevelValues(byte ArrowOperation, byte StickArrowOperation, byte MinThrow, byte FBallCount, sbyte StickedBlueCount, sbyte ArrowBlueCount, short NoRange1, short NoRange2)
     {
         this.ArrowOperation = ArrowOperation;
         this.StickArrowOperation = StickArrowOperation;
-        this.MinThrow = MinThrow;
-        this.FBallCount = FBallCount;
+        this.MinThrow = MinThrow;//silinecek
+        this.FBallCount = FBallCount;//silinecek
         this.StickedBlueCount = StickedBlueCount;
         this.ArrowBlueCount = ArrowBlueCount;
-        this.NoRange1 = NoRange1;
-        this.NoRange2 = NoRange2;
+        this.NoRange1 = NoRange1;//silinecek
+        this.NoRange2 = NoRange2;//silinecek
 
 
-        
+
 
     }
     
@@ -1876,685 +2090,329 @@ public class Main : MonoBehaviour
     
     private void Levels()
     {
-        LevelText.text = "Level " + CurrentLevelType.LevelNo;
-        switch (CurrentLevelType.Type)
+
+        if (TrainingLevels)
         {
-            //bekleme %100 doğru olabilir gerçek saniyeye göre
-            case "Archery":
-                CloseTrainingUIs();
-                switch (CurrentLevelType.LevelNo)
-                {
+            NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Next";
+            LevelInfo.text = "Training Level " + TrainingLevelNo;
+            //sonradan çarpı bölü öğretilecek
+            switch (TrainingLevelNo)
+            {
+                case 1:
+                    CloseGuideArrows();
+                    CloseGuideArrowUI679();
+                    LevelValues(1, 1, 1, 1, 1, 1, 1, 4);
+
+                    ThrowAMouseArea.enabled = true;
+                    GuideCount = 0;
+                    NextGuideButton.SetActive(false);
+                    //AmmoShowerClose
+                    StartCoroutine(InformTargeting());
+                    StartCoroutine(HowToTArrow());
+
+                    GTs[0].Timer = GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0);
+                    StartCoroutine(GTs[0].Timer);
+                    GTs[1].Timer = GuideTargetUI(TE.Number, false, 1);
+                    StartCoroutine(GTs[1].Timer);
+                    CloseGameGuide();
                     
-                    case 1:
-                        LevelValues(1, 2, 1, 2, 1,0, 1, 5);
-                        TE.AddRT(4, 1);
-                        TE.AddCC(1, 0, 20, 1, 0);
-                        TE.AddRT(4, 1);
-                        TE.AddCC(1, 0, 40, 1, 0);
-                        TE.AddRT(4, 1);
-                        break;
-                    case 2:
-                        LevelValues(1, 2, 1, 3, 1, 1, 1, 5);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(1, 0, 30, 1, 0);
-                        TE.AddRT(4, 4);
-                        TE.AddCC(1, 0, 70, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 3:
+                    ActiveNumberShowers(false);
+                    PlusOrMinus.enabled = false;
+
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 25, 1, 0);
+                    TE.AddRT(4, 0);
+                    break;
+                case 2:
+                    HowToTArrowPosUpdate = false;
+                    CloseGuideArrows();
+                    CloseGuideArrowUI679();
+                    LevelValues(1, 1, 1, 3, 3, 1, 1, 4);
 
-                        LevelValues(1, 2, 2, 2, 1, 1, 1, 5);
-                        //justRot(RT ile CC sayısı aynı):
-                        TE.AddRT(4, 2);
-                        TE.AddCC(0, 0, 40, 1, 0);
-                        TE.AddRT(4, 3);
-                        TE.AddCC(0, 0, 90, 1, 0);
-                        TE.AddRT(4, 1);
-                        break;
-                    case 4:
-
-                        LevelValues(1, 2, 2, 2, 1, 1, 1, 5);
-                        TE.AddRT(3, 1.25f);
-                        TE.AddCC(1.5f, 0, 25, 1, 0);
-                        TE.AddRT(4, 1.25f);
-                        break;
-                    case 5:
-                        LevelValues(1, 2, 1, 1, 0, 1, 1, 5);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(1, 0, 55, 1, 0);
-                        TE.AddRT(5, 0);
-                        break;
-                    case 6:
-
-                        LevelValues(1, 2, 2, 2, 1, 1, 1, 5);
-                        TE.AddRT(1, 0);
-                        TE.AddCC(0.7f, 0, 60, -1, 0);
-                        TE.AddRT(8, 0);
-                        break;
-                    case 7:
-                        LevelValues(1, 2, 3, 3, 2, 1, 1, 6);
-                        TE.AddRT(0, 0);
-                        TE.AddCC(1, 0, 32, 1, 0);
-
-                        TE.AddRT(1, 0);
-                        TE.AddCC(1, 0, 32, -1, 0);
-
-                        TE.AddRT(8, 0);
-                        break;
-                    case 8:
-                        LevelValues(1, 2, 3, 3, 2, 1, 1, 5);
-                        
-                        TE.AddRT(3, 1.2f);
-                        TE.AddCC(1.5f, 0, 50, 1, 0);
-                        TE.AddRT(5, 1.2f);
-                        
-                        break;
-                    case 9:
-                        LevelValues(1, 2, 3, 3, 2, 1, 1, 5);
-
-                        TE.AddRT(0, 1.5f);
-                        TE.AddCC(0.5f, 0, 60, 1, 0);
-                        TE.AddRT(1, 1.5f);
-                        break;
-                    case 10:
-
-                        LevelValues(1, 2, 3, 3, 2, 1, 1, 7);
-
-                        TE.AddRT(0, 0.5f);
-                        TE.AddCC(3, 0, 60, 1, 0);
-                        TE.AddRT(4, 6);
-                        TE.AddCC(3, 0, 60, 1, 0);
-                        TE.AddRT(8, 0.5f);
-
-                        break;
-                        //üzerinden geçilecek:
-                    case 11:
-
-                        LevelValues(1, 2, 2, 5, 3, 1, 1, 7);
-
-                        TE.AddRT(0, 1.5f);
-                        TE.AddCC(1.5f, 0, 45, 1, 0);
-                        TE.AddRT(3, 0);
-                        TE.AddCC(1.5f, 0, 45, 1, 0);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(1.5f, 0, 45, 1, 0);
-                        TE.AddRT(7, 1.5f);
-
-                        break;
-                    case 12:
-
-                        LevelValues(1, 2, 2, 2, 1, 1, 1, 7);
-                        TE.AddRT(8, 2);
-                        TE.AddCC(2/*1.4f*/, 0, 60, 1, 0);
-                        TE.AddRT(2, 0);
-
-                        break;
-                    case 13:
-
-                        LevelValues(1, 2, 2, 3, 1, 1, 1, 7);
-                        TE.AddRT(2, 0);
-                        TE.AddCC(4, 0, /*80*/70, 1, 0);
-                        TE.AddRT(6, 0);
-                        TE.AddCC(1, 0, /*40*/30, -1, 0);
-                        TE.AddRT(8, 0);
-
-                        break;
-                    case 14:
-
-                        LevelValues(1, 2, 2, 5, 4, 1, 1, 7);
-                        TE.AddRT(5, 0);
-                        TE.AddCC(0, 0, 75/*65*/, 1, 0);
-                        TE.AddRT(5, 0);
-
-                        break;
-                    case 15:
-
-                        LevelValues(1, 2, 2, 3, 2, 1, 1, 7);
-                        TE.AddRT(6, 0);
-                        TE.AddCC(2.5f, 0, 60, 1, 0);
-                        TE.AddRT(1, 0);
-                        TE.AddCC(2.5f, 0, 20, -1, 0);
-                        TE.AddRT(8, 0);
-
-                        break;
-                    case 16:
-
-                        LevelValues(1, 2, 3, 3, 1, 1, 0, 12);
-                        TE.AddRT(2, 0);
-                        TE.AddCC(2, 0, /*50*/70, -1, 0);
-                        TE.AddRT(5, 0);
-
-                        break;
-                    case 17:
-
-                        LevelValues(1, 2, 3, 4, 2, 1, 0, 12);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 85, 1, 0);
-                        TE.AddRT(4, 0);
-
-                        break;
-                    case 18:
-
-                        LevelValues(1, 2, 2, 3, 2, 1, 0, 15);
-                        TE.AddRT(2, 0);
-                        TE.AddCC(0.6f/*0.4f*/, 0, 110/*90*/, 1, 0);
-                        TE.AddRT(3, 0);
-
-                        break;
-                    case 19:
-
-                        LevelValues(1, 2, 3, 5, 2, 1, 0, 15);
-                        TE.AddRT(0, 0);
-                        TE.AddCC(0, 0, /*110*/130, 1, 0);
-                        TE.AddRT(0, 0);
-
-                        break;
-                    case 20:
-
-                        LevelValues(1, 2, 3, 3, 1, 1, 0, 15);
-                        TE.AddRT(5, 0);
-                        TE.AddCC(/*3.5f*/4, 0, 35, 1, 0);
-                        TE.AddRT(6, 0);
-
-                        break;
-
-
-
-
-
-
-
-
-                    //case 21:
-
-                    //    LevelValues(1, 2, 2, 4, 3, 1, 0, 15);
-                    //    TE.AddRT(5, 0);
-                    //    TE.AddCC(1.5f, 0, 70, 1, 0);
-                    //    TE.AddRT(4, 0);
-                    //    TE.AddCC(1.5f, 0, 70, 1, 0);
-                    //    TE.AddRT(7, 0);
-                    //    TE.AddCC(1.5f, 0, 70, 1, 0);
-                    //    TE.AddRT(8, 0);
-
-                    //    break;
-                    //case 22:
-
-                    //    LevelValues(1, 2, 3, 4, 2, 1, 0, 13);
-                    //    TE.AddRT(5, 0);
-                    //    TE.AddCC(1, 0, 50, 1, 0);
-                    //    TE.AddRT(3, 0);
-
-                    //    break;
-                    //case 23:
-
-                    //    LevelValues(1, 2, 2, 5, 4, 1, 0, 15);
-                    //    TE.AddRT(2, 0);
-                    //    TE.AddCC(2, 0, 65, 1, 0);
-                    //    TE.AddRT(4, 0);
-
-                    //    break;
-                    //case 24:
-
-                    //    LevelValues(1, 2, 2, 3, 2, 1, 0, 15);
-                    //    TE.AddRT(0, 0);
-                    //    TE.AddCC(1.7f, 0, 90, -1, 0);
-                    //    TE.AddRT(2, 0);
-                    //    TE.AddCC(1.7f, 0, 45, 1, 0);
-                    //    TE.AddRT(8, 0);
-
-                    //    break;
-                    //case 25:
-
-                    //    LevelValues(1, 2, 2, 3, 2, 1, 0, 15);
-                    //    TE.AddRT(0, 3);
-                    //    TE.AddCC(2.5f, 0, 70, -1, 0);
-                    //    TE.AddRT(1, 0);
-                    //    TE.AddCC(2.5f, 0, 70, -1, 0);
-                    //    TE.AddRT(4, 0);
-                    //    TE.AddCC(2.5f, 0, 70, -1, 0);
-                    //    TE.AddRT(3, 3);
-
-                    //    break;
-                        
-                }
-
-                break;
-            case "Math":
-                CloseTrainingUIs();
-                switch (CurrentLevelType.LevelNo)
-                {
-                    case 1:
-                        LevelValues(1, 2, 1, 1, 0, 1, 1, 10);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 15, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 2:
-                        LevelValues(1, 2, 1, 4, 1, 1, 1, 10);
-
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 30, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 3:
-                        LevelValues(1, 2, 2, 3, 2, 1, 1, 10);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 30, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 4:
-                        LevelValues(1, 2, 2, 3, 1, 1, 1, 10);
-                        TE.AddRT(4, 3);
-                        TE.AddCC(0, 0, 30, 1, 0);
-                        TE.AddRT(4, 2);
-                        TE.AddCC(0, 0, 45, 1, 0);
-                        TE.AddRT(4, 2);
-                        break;
-                    case 5:
-                        LevelValues(1, 2, 3, 3, 2, 1, 1, 9);
-                        TE.AddRT(3, 5);
-                        TE.AddCC(1, 0, 35, -1, 0);
-                        TE.AddRT(5, 3);
-                        break;
-                    case 6:
-                        LevelValues(1, 2, 2, 4, 2, 1, 1, 13);
-                        TE.AddRT(2, 0.5f);
-                        TE.AddCC(0, 0, 110, -1, 0);
-                        TE.AddRT(2, 3);
-                        TE.AddCC(0, 0, 25, -1, 0);
-                        TE.AddRT(2, 3);
-                        break;
-                    case 7:
-                        LevelValues(1, 2, 3, /*4*/3, 2, 1, 1, 10);
-                        TE.AddRT(6, 1);
-                        TE.AddCC(0, 0, /*100*/90, 1, 0);
-                        TE.AddRT(6, 4);
-                        TE.AddCC(0, 0, 30, 1, 0);
-                        TE.AddRT(6, 4);
-                        break;
-                    case 8:
-                        LevelValues(1, 2, 2, 4, 1, 1, 0, 12/*18*/);
-                        TE.AddRT(7, 0);
-                        TE.AddCC(0, 0, 40, 1, 0);
-                        TE.AddRT(7, 0);
-                        break;
-                    case 9:
-                        LevelValues(1, 2, 3, 3, 2, 1, 0, 15);
-                        TE.AddRT(2, 0);
-                        TE.AddCC(3, 0, 40, 1, 0);
-                        TE.AddRT(4, 5);
-                        TE.AddCC(3, 0, 40, 1, 0);
-                        TE.AddRT(6, 0);
-                        break;
-                    case 10:
-                        LevelValues(1, 2, 2, 5, 3, 1, 0, 22);
-                        TE.AddRT(4, 2.5f);
-                        TE.AddCC(0.25f, 0, 30, -1, 0);
-                        TE.AddRT(5, 2.5f);
-                        break;
-                        //üzerinden geçilecek:(hepsi iyi gibi math için)
-                    case 11:
-                        LevelValues(1, 2, 2/*1*/, 6, 4, 2/*1*/, 0, 22);
-                        TE.AddRT(1, 3);
-                        TE.AddCC(0.7f, 0, 30, 1, 0);
-                        TE.AddRT(7, 3);
-                        break;
-                    case 12:
-                        LevelValues(1, 2, 3, 4, 1, 1, 1, 14);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 35, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 13:
-                        LevelValues(1, 2, 2, 5, 4, 1, 5, 20);
-                        TE.AddRT(7, 0);
-                        TE.AddCC(0.7f, 0, 35, -1, 0);
-                        TE.AddRT(8, 0);
-                        break;
-                    case 14:
-                        LevelValues(1, 2, 3, /*3*/4, 1/*2*/, 1, 1, 20);
-                        TE.AddRT(0, 0);
-                        TE.AddCC(1.5f, 0, 25, 1, 0);
-                        TE.AddRT(5, 0);
-                        break;
-                    case 15:
-                        LevelValues(2, 2, 2, 3, 2, 1, 1, 10);
-                        TE.AddRT(3, 0);
-                        TE.AddCC(0, 0, 35, 1, 0);
-                        TE.AddRT(3, 0);
-                        break;
-
-
-                    case 16:
-                        LevelValues(2, 2, 2, 3, 2, 1, 1, 25/*20*/);
-                        TE.AddRT(0, 0);
-                        TE.AddCC(/*1*/1.5f, 0, 45, 1, 0);
-                        TE.AddRT(3, 0);
-                        break;
-                    case 17:
-                        LevelValues(2, 2, 3, 3, 1, 1, 0, /*30*/20);
-                        TE.AddRT(4, 3.5f);
-                        TE.AddCC(5, 0, 40, -1, 0);
-                        TE.AddRT(6, 3.5f);
-                        break;
-                    case 18:
-                        LevelValues(1, 2, 3, 3, 1, 1, 0, 30);
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 30, -1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 19:
-                        LevelValues(/*2*/1, 2, 2, 3, 1, 1, 0, 25);
-                        TE.AddRT(8, 0);
-                        TE.AddCC(0, 0, /*50*/60, 1, 0);
-                        TE.AddRT(8, 0);
-                        break;
-                    case 20:
-                        //LevelValues(2, 2, 3, 3, 1, 1/*3*/, 0, 20);
-                        //TE.AddRT(3, 0);
-                        //TE.AddCC(/*1*/1.5f, 0, 40, 1, 0);
-                        //TE.AddRT(4, 0);
-
-
-
-                        LevelValues(2, 2, 7, 7, 1, 1/*3*/, 0, 20);
-                        TE.AddRT(3, 0);
-                        TE.AddCC(/*1*/1.5f, 0, 40, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                        //16-20 değiştirildi
-
-
-
-
-
-                    //case 21:
-                    //    LevelValues(2, 2, 3, 4, 3, 1, 0, 17);
-                    //    TE.AddRT(5, 0);
-                    //    TE.AddCC(0, 0, 30, -1, 0);
-                    //    TE.AddRT(5, 0);
-                    //    break;
-                    //case 22:
-                    //    LevelValues(1, 2, 4, 4, 3, 1, 0, 15);
-                    //    TE.AddRT(4, 3.5f);
-                    //    TE.AddCC(2, 0, 40, -1, 0);
-                    //    TE.AddRT(2, 3.5f);
-                    //    break;
-                    //case 23:
-                    //    LevelValues(2, 2, 2, 4, 3, 1, 1, 30);
-                    //    TE.AddRT(3, 2);
-                    //    TE.AddCC(0.7f, 0, 40, 1, 0);
-                    //    TE.AddRT(5, 2);
-                    //    break;
-                    //case 24:
-                    //    LevelValues(2, 2, 3, 3, 2, 1, 0, 20);
-                    //    TE.AddRT(3, 0);
-                    //    TE.AddCC(0.5f, 0, 40, 1, 0);
-                    //    TE.AddRT(7, 0);
-                    //    break;
-                    //case 25:
-                    //    LevelValues(2, 2, 2, 3, 2, 1, -10, 10);
-                    //    TE.AddRT(1, 0);
-                    //    TE.AddCC(0, 0, 40, 1, 0);
-                    //    TE.AddRT(1, 0);
-                    //    break;
-                        
-                }
-
-                break;
-
-            case "Training":
-                //cc0.SetValues(0, 0, 40, -1, 0, 0);
-                //TE.AddCCsAndPos(cc0, 4);
-
-
-                /*
-                 Nasıl oynanır>ok atma, saplanınca denkleme girme, denkleme saplı top sayısını değiştirme, Targete atılacağını gösterme, kırmızı eksi, mavi artı, ve her biri için yazı
-                 your number , target number
-                 */
-                //sonradan çarpı bölü öğretilecek
-                switch (CurrentLevelType.LevelNo)
-                {
-                    case 1:
-                        //StopAllCoroutines();
-                        CloseGuideArrows();
-                        CloseGuideArrowUI679();
-                        LevelValues(1, 1, 1, 1, 1, 1, 1,4);
-
-                        ThrowAMouseArea.enabled = true;
-                        GuideCount = 0;
-                        NextGuideButton.SetActive(false);
-                        //AmmoShowerClose
-                        StartCoroutine(InformTargeting());
-                        StartCoroutine(HowToTArrow());
-
-                        StartCoroutine(GuideTargetUI(StickedArrows.Objects[0].GetComponent<Arrow>().Number, false, 0));
-                        StartCoroutine(GuideTargetUI(TE.Number, false, 1));
-                        GameGuideUI.SetActive(false);
-                        //StartCoroutine(BowToAmmo());
-
-                        //AmmoShower:
-                        //GameGuideText.text = "Ammo";
-                        //GameGuideUI.SetActive(true);
-                        //StartCoroutine(GuideArrowUI(0,false,2, false));
-
-                        ActiveNumberShowers(false);
-                        PlusOrMinus.enabled = false;
-
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 25, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 2:
-                        HowToTArrowPosUpdate = false;
-                        //StopAllCoroutines();
-                        CloseGuideArrows();
-                        CloseGuideArrowUI679();
-                        LevelValues(1, 1, 1, 3, 3, 1, 1, 4);
-
-                        GameGuideText.text = "Every arrow have a number and next arrow's number is here";
-                        GameGuideUI.SetActive(true);
-                        ThrowAMouseArea.enabled = false;
-
-
-                        NextGuideButton.SetActive(false);
-                        GuideCount = 5;
-                        ActiveNumberShowers(false);
-
-                        StartCoroutine(GuideArrowUI(2, false));
-
-                        //StartCoroutine(MovableArrow());
-
-
-                        //StartCoroutine(GuideTargetUI(null, false, 0));
-
-
-
-
-                        //4.bölümde renklerin işaretini göstersin, 5 tede rehbersiz trainingin bitimi olarak oynasın
-
-
-
-                        //PlusOrMinus.enabled = true;
-
-                        //StartCoroutine(GuideArrowUI(0, false, 0, true));
-
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 5, 1, 0);
-                        TE.AddRT(4, 0);
-
-                        //NextTrainingText.enabled = true;
-                        //burada targete ulaşmak zorunlu olmasın
-                        break;
-                    case 3:
-                        LevelValues(1, 1, 1, 1, 1, 1, 1, 4);
-                        CloseGuideArrowUI679();
-                        CloseGuideArrows();
-                        
-
-                        ThrowAMouseArea.enabled = false;
-                        NextGuideButton.SetActive(true);
-                        GuideCount = 3;
-
-
-                        PlusOrMinus.enabled = false;
-                        GameGuideText.text = "When you hit the ball, arrow will process with it.";
-                        GameGuideUI.SetActive(true);
-
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 10, 1, 0);
-                        TE.AddRT(4, 0);
-
-                        //StopAllCoroutines();
-                        //LevelValues(1, 2, 2, 2, 1, 1, 1, 4);
-                        //CloseGuideArrowUI679();
-                        //CloseGuideArrows();
-                        //ThrowAMouseArea.enabled = false;
-                        //NextGuideButton.SetActive(true);
-                        //GuideCount = 3;
-                        //GameGuideUI.SetActive(false);
-
-                        //PlusOrMinus.enabled = true;
-
-                        //StartCoroutine(GuideArrowUI(0, false, 0, true));
-
-                        //TE.AddRT(4, 0);
-                        //TE.AddCC(0, 0, 10, 1, 0);
-                        //TE.AddRT(4, 0);
-                        break;
-                    case 4:
-                        //ActiveNumberShowers(false);
-                        //PlusOrMinus.enabled = false;
-                        //GameGuideUI.SetActive(false);
-                        //LevelValues(1, 1, 1, 3, 1, 1, 1, 4);
-                        //GuideCount = 2;
-
-                        //NextGuideButton.SetActive(true);
-                        //StartCoroutine(GuideArrowUI(0, false, 1, false));
-                        //ThrowAMouseArea.enabled = false;
-
-                        //TE.AddRT(4, 0);
-                        //TE.AddCC(0, 0, 10, 1, 0);
-                        //TE.AddRT(4, 0);
-
-
-                        LevelValues(1, 2, 2, 2, 1, 1, 1, 4);
-                        ThrowAMouseArea.enabled = false;
-                        PlusOrMinus.enabled = false;
-                        NextGuideButton.SetActive(true);
-                        GameGuideUI.SetActive(true);
-                        TrainingOperationA = 0;
-                        GameGuideText.text = "Every arrow and ball have a color, every color has a sign.";
-                        GuideCount = 8;
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 5, 1, 0);
-                        TE.AddRT(4, 0);
-                        break;
-                    case 5:
-                        LevelValues(2, 2, 2, 2, 1, 0, 1, 4);
-                        CloseGuideArrowUI679();
-                        CloseGuideArrows();
-                        CloseGuideTargets();
-                        TrainingOperationA = 0;
-                        ThrowAMouseArea.enabled = true;
-                        GameGuideUI.SetActive(false);
-                        NextGuideButton.SetActive(false);
-                        GuideCount = 4;
-
-                        
-
-                        TE.AddRT(4, 0);
-                        TE.AddCC(0, 0, 15, 1, 0);
-                        TE.AddRT(4, 0);
-                       
-
-                        //NextGuideButton.SetActive(true);
-                        //GameGuideUI.SetActive(true);
-                        ////StopAllCoroutines();
-                        //LevelValues(1, 2, 2, 2, 1, 1, 1, 6);
-                        //GuideCount = 1;
-                        //GameGuideText.text = "Do it yourself!";
-
-
-
-
-                        ////aşağısı optimize (normalde de 4. levelın çağırılmaması gerekiyor if (!CurrentLevelType.Finished) saçma)?
-                        ////if (!CurrentLevelType.Finished)
-                        ////{
-                        ////    NextGuideButton.SetActive(true);
-                        ////    //PlusMinusShower.enabled = true;
-                        ////    ThrowAMouseArea.enabled = false;
-                        ////    ////NextTrainingText.enabled = true;
-                        ////    //TrainingTable.enabled = true;
-                        ////}
-                        //TE.AddRT(4, 0);
-                        //TE.AddCC(0, 0, 20, 1, 0);
-                        //TE.AddRT(4, 0);
-                        break;
                     
-                }
-                //aşağıda son satır olmazsa daha optimize olur:
-                
-                break;
+                    
+                    ShowGameGuide("Every arrow have a number and next arrow's number is here", false, false);
+                    ThrowAMouseArea.enabled = false;
+
+
+                    NextGuideButton.SetActive(false);
+                    GuideCount = 5;
+                    ActiveNumberShowers(false);
+
+                    StartCoroutine(GuideArrowUI(2, false));
+
+
+
+
+
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 5, 1, 0);
+                    TE.AddRT(4, 0);
+
+                    break;
+                case 3:
+                    LevelValues(1, 1, 1, 1, 1, 1, 1, 4);
+                    CloseGuideArrowUI679();
+                    CloseGuideArrows();
+
+
+                    ThrowAMouseArea.enabled = false;
+                    NextGuideButton.SetActive(true);
+                    GuideCount = 3;
+
+
+                    PlusOrMinus.enabled = false;
+                    
+                    ShowGameGuide("When you hit the ball, arrow will process with it", false, false);
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 10, 1, 0);
+                    TE.AddRT(4, 0);
+
+
+
+                    break;
+                case 4:
+
+
+                    LevelValues(1, 2, 2, 2, 1, 1, 1, 4);
+                    ThrowAMouseArea.enabled = false;
+                    PlusOrMinus.enabled = false;
+                    NextGuideButton.SetActive(true);
+                    
+                    ShowGameGuide("Every arrow and ball have a color, every color has a sign", false, false);
+                    TrainingOperationA = 0;
+                    
+                    GuideCount = 8;
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 5, 1, 0);
+                    TE.AddRT(4, 0);
+                    break;
+                case 5:
+                    LevelValues(2, 2, 2, 2, 1, 0, 1, 4);
+                    CloseGuideArrowUI679();
+                    CloseGuideArrows();
+                    CloseGuideTargets();
+                    TrainingOperationA = 0;
+                    ThrowAMouseArea.enabled = false;
+                    
+                    
+                    ShowGameGuide("Look to your ammo there is minus arrows", false, false);
+                    StartCoroutine(GuideArrowUI(1, false));
+                    NextGuideButton.SetActive(false);
+                    GuideCount = 5;
+
+
+
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 8, 1, 0);
+                    TE.AddRT(4, 0);
+
+
+                    break;
+                case 6:
+                    LevelValues(1, 2, 1, 2, 1, 1, 1, 4);
+                    CloseGuideArrows();
+                    CloseGuideTargets();
+                    ThrowAMouseArea.enabled = false;
+                    
+                    
+                    ShowGameGuide("Cylinder number is at the beginning of the equation", false, false);
+                    NextGuideButton.SetActive(true);
+                    GuideCount = 3;
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 15, 1, 0);
+                    TE.AddRT(4, 0);
+                    break;
+                case 7:
+                    LevelValues(2, 2, 2, 2, 1, 1, 1, 4);
+                    
+                    ShowGameGuide("To pass the level the equality must be...", false, false);
+                    StartCoroutine(GuideArrowUI(15, false));
+                    NextGuideButton.SetActive(false);
+                    ThrowAMouseArea.enabled = false;
+                    GuideCount = 2;
+                    TE.AddRT(4, 0);
+                    TE.AddCC(0, 0, 15, 1, 0);
+                    TE.AddRT(4, 0);
+                    break;
+
+            }
+            ScoreText.enabled = false;
+            TE.TimeToEnd.enabled = false;
+            EnterRandomNums = true;
+            //aşağıda son satır olmazsa daha optimize olur:
+            TE.FirstPositions();
         }
+        else
+        {
+            if (PlayTicketCount > 0)
+            {
+                PlayTicketCount--;
+                PlayTicketUpdate(PlayTicketCount);
+                NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Play Again";
+                if (!TargetEquivalentSame)
+                {
+                    MathPoints(true);
+                }
+                
+                CloseTrainingUIs();
 
-        TE.FirstPositions();
+
+
+                //profesör
+                //doçent
+                //doktor
+
+                //difficultytext ve math level shower
+                //profesörü seçip oynayan bitirince math level olarak profesör seviyesinin ortasında olmalı
+                //Kid(7-12 age)
+                //Teenager(12-18 age)
+                //Young(18 above)
+                //Adult(25 above)
+                //Bachelor's degree (bu olmasın)
+                //physicist
+                //programmer
+                //hacker
+                //professor
+
+                TE.AddRT(4, 1);
+                TE.AddCC(1, 0, 25, 1, 0);
+                TE.AddRT(4, 1);
+
+                
+                ArrowOperation = 2;
+                StickArrowOperation = 2;
+                NoRange1 = CurrentDifficulty.RangeDown;
+                NoRange2 = CurrentDifficulty.RangeUp;
+                MinThrow = CurrentDifficulty.MinThrow;
+                FBallCount = CurrentDifficulty.FBallCount;
+                ArrowBlueCount = CurrentDifficulty.ArrowBlueCount;
+                StickedBlueCount = CurrentDifficulty.StickedBlueCount;
+                if (EnterRandomNums)
+                {
+                    Debug.Log("MThrowFBallCountSwap");
+                    MThrowFBallCountSwap();//TODO
+                    //
+                }
+                TE.TimeToEnd.enabled = true;
+
+                TE.CurrentTime = CurrentDifficulty.MaxTime;
+                TE.TimeToEnd.text = "Time : " + ConvertTime(TE.CurrentTime);
+                CurrentMathScore = CurrentDifficulty.MaxScore;
+                ScoreText.text = "Score To Be Gained : " + CurrentMathScore;
+                ScoreText.enabled = true;
+
+
+
+
+
+                LevelInfo.text = "Difficulty : " + DifficultySlider.value;
+
+                //aşağıda son satır olmazsa daha optimize olur:
+                TE.FirstPositions();
+            }
+            else
+            {
+                StartCoroutine(PlayTicketBlink());
+                OpenMenu();
+            }
+            
+            
+            
+        }
+        
+        
+        
+
 
     }
-    private bool ShowerArrowB = false;
-    private IEnumerator ShowerArrowBlink(Image ShowerArrow)
+    public void PlayTicketButton()
     {
-        ShowerArrowB = false;
-        yield return new WaitForSeconds(0.1f);
-        ShowerArrowB = true;
-        float time = 0;
-        bool Blink = false;
-        while (ShowerArrowB)
+        CloseSettingBox.enabled = true;
+        PlayTicketButtons.SetActive(true);
+        ShowGameGuide("",false, true);
+    }
+    private bool PlayTicketBlinking = false;
+    //blink baya var, sonradan optimizasyon için tek bir metodda yapılmalı şimdi gerek yok
+    private IEnumerator PlayTicketBlink()
+    {
+        if (!PlayTicketBlinking)
         {
-            yield return new WaitForSeconds(0.005f);
-            time += Time.deltaTime * 10;
-            if (time >= 2)
+            PlayTicketBlinking = true;
+            Color col = PlayTicketImage.color;
+            bool blink = false;
+            for (int i = 0; i < 6; i++)
             {
-                time = 0;
-                Blink = !Blink;
-                if (Blink)
+                yield return new WaitForSecondsRealtime(0.1f);
+                blink = !blink;
+                if (blink)
                 {
-                    ShowerArrow.enabled = true;
+                    PlayTicketImage.color = new Color32(0xB0, 0x7F, 0x6A, 0xFF);
                 }
                 else
                 {
-                    ShowerArrow.enabled = false;
+                    PlayTicketImage.color = col;
                 }
             }
+            PlayTicketImage.color = col;
+            PlayTicketBlinking = false;
         }
-        ShowerArrow.enabled = false;
-    }
-    public void GuideTextShow(string Message, Image ShowerArrow)
-    {
-        GameGuideUI.SetActive(true);
-        GameGuideText.text = Message;
-        if (ShowerArrow)
-        {
-            StartCoroutine(ShowerArrowBlink(ShowerArrow));
-            //ShowerArrow.enabled = true;
-        }
-        //GuideUIArrow.enabled = true;
-        //GuideUIArrow.rectTransform.localScale = new Vector2(1,1);
-        //GuideUIArrow.rectTransform.position = GuideEquationShowerPos.position;
-        //GuideUIArrow.rectTransform.sizeDelta= GuideEquationShowerPos.sizeDelta;
         
-        //NextLevelButton.SetActive(true);
-        //TargetGuideVisible = false;
-        CloseGuideArrows();
-        CloseGuideTargets();
+
+    }
+    private void MThrowFBallCountSwap()//MinThrowFirstBallCountSwap
+    {
+        if (Random.Range(0, 2) == 0)
+        {
+            ArrowBlueCount = (sbyte)(MinThrow - ArrowBlueCount);
+        }
+
+        if (Random.Range(0, 2) == 0)
+        {
+            StickedBlueCount = (sbyte)(FBallCount - StickedBlueCount);
+        }
+    }
+    public string ConvertTime(int TimeToConvert)
+    {
+
+        return System.TimeSpan.FromSeconds(TimeToConvert).ToString(@"mm\:ss");
+    }
+    public void SliderDifficulty()
+    {
+        CurrentDifficulty = Difficulties[(short)DifficultySlider.value - 1];
+        GameSpecsText.text = CurrentDifficulty.DifficultySpecs(ConvertTime(CurrentDifficulty.MaxTime));
+        
+        
     }
     
+
+    //private IEnumerator ss(Product p)
+    //{
+    //    yield return new WaitForSeconds(4);
+    //    ShowGameGuide(p.metadata.localizedPrice.ToString(), true, false);
+    //}
+    private IEnumerator ShowLoadingPage()
+    {
+        LoadingPage.SetActive(true);
+        yield return new WaitForSecondsRealtime(8);
+        LoadingPage.SetActive(false);
+    }
     void Awake()
     {
+        //Bu fakestore açma:
+        //StandardPurchasingModule.Instance().useFakeStoreAlways = true;
+
+        Terrain.SetActive(true);
         if (Application.isEditor)
         {
             Time.timeScale = 1.5f;
+            ResetGameButton.SetActive(true);
         }
+        else
+        {
+            StartCoroutine(ShowLoadingPage());
+        }
+        
         WidthRatio = c.pixelRect.width / 100;
         AimingGA = new GuideArrow(AimingGAStick, AimingGATop, false);
         for (int i = 0; i < 3; i++)
@@ -2567,12 +2425,12 @@ public class Main : MonoBehaviour
             GTs[i] = new GuideTarget(TargetUIGuide[i], false);
         }
 
-        
-        CanvasScalerRatio = c.GetComponent<CanvasScaler>().referenceResolution.x / Screen.width;
+        RefResolutionX = c.GetComponent<CanvasScaler>().referenceResolution.x;
+        CanvasScalerRatio = RefResolutionX / Screen.width;
 
 
         OpenMenu();
-        //Levels();
+        
 
         LMaskTarget = LayerMask.GetMask("Target");
         //LevelFirstArrowCounts();
@@ -2594,7 +2452,7 @@ public class Main : MonoBehaviour
         BallsUI.SpawnBallUIs(NextBallPrefab, BallUIParent);
         BallsUI.SetReadyCount(MinThrow);
 
-        ArrowPath = new ObjectPool(100);//30
+        ArrowPath = new ObjectPool(45);//100
         ArrowPath.SpawnArrowPathParts(ArrowPathPartPrefab, ArrowPathParent);
         ArrowPath.Next = 0;
 
@@ -2606,26 +2464,292 @@ public class Main : MonoBehaviour
         TargetIK.transform.position = ShortenBowPos.position;
 
 
-        Archery = new LevelType("Archery",20, ArcheryTextInfo);
-        Math = new LevelType("Math",20, MathTextInfo);
-        Training = new LevelType("Training",6, null);
 
-        if (Training.LevelNo <= 4)
+
+
+
+        //kaç kişide bir IAP satı alınıyor?
+        //menüde rules'u bölmeye gerek var mı yok
+        //ekstra 10,5    -5,-20 falan gibi bir kaç girilecek, işareti hiç eksi olmayan veya tam tersi
+
+
+        //max score'lar girilecek
+        //Random, every arrow girilecek
+
+        Difficulties.Add(new Difficulty(null, 3, 0, 120, false, false, 5, 1, 1, 0, 0));
+        Difficulties.Add(new Difficulty(null, 4, 0, 120, false, false, 5, 1, 2, 0, 0));
+        Difficulties.Add(new Difficulty(null, 5, 0, 110, false, false, 5, 1, 2, 0, 1));
+        Difficulties.Add(new Difficulty(null, 6, 0, 100, false, false, 5, 1, 2, 0, 1));
+        Difficulties.Add(new Difficulty(null, 7, 0, 110, false, false, 5, 2, 2, 1, 0));
+        Difficulties.Add(new Difficulty(null, 8, 0, 110, false, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 10, 0, 130, true, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 12, 0, 110, false, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 10, 0, 100, false, false, 5, 1, 3, 1, 0));
+        Difficulties.Add(new Difficulty(null, 13, 0, 95, false, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 15, 0, 105, true, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 16, 0, 105, true, false, 5, 1, 3, 1, 1));
+        Difficulties.Add(new Difficulty(null, 10, 0, 120, true, false, 5, 2, 3, 1, 0));
+        Difficulties.Add(new Difficulty(null, 2, -2, 130, false, false, 5, 2, 2, 0, 1));
+        Difficulties.Add(new Difficulty(null, 5, 0, 100, false, false, 5, 1, 4, 0, 2));
+        Difficulties.Add(new Difficulty(null, 5, -5, 140, true, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 0, -3, 130, false, false, 5, 1, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 19, 0, 130, false, false, 5, 2, 2, 1, 0));
+        Difficulties.Add(new Difficulty(null, 10, 0, 110, false, false, 5, 2, 4, 0, 2));
+        Difficulties.Add(new Difficulty(null, 5, 0, 55, false, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 10, -10, 135, false, false, 5, 2, 2, 0, 1));
+        Difficulties.Add(new Difficulty(null, 4, 0, 120, false, true, 5, 3, 5, 0, 1));
+        Difficulties.Add(new Difficulty(null, 10, -10, 130, true, false, 5, 2, 2, 0, 1));
+        Difficulties.Add(new Difficulty(null, 25, 0, 130, true, false, 5, 2, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 5, 0, 40, false, false, 5, 2, 2, 1, 0));
+        Difficulties.Add(new Difficulty(null, 7, 0, 40, false, false, 5, 2, 2, 0, 1));
+        Difficulties.Add(new Difficulty(null, 3, 0, 100, false, true, 5, 3, 3, 1, 1));
+        Difficulties.Add(new Difficulty(null, 14, 0, 105, false, false, 5, 2, 3, 1, 1));
+        Difficulties.Add(new Difficulty(null, 40, 0, 130, false, false, 5, 1, 3, 1, 0));
+        Difficulties.Add(new Difficulty(null, 20, -4, 110, false, false, 5, 2, 2, 1, 0));
+        Difficulties.Add(new Difficulty(null, 100, 0, 225, false, false, 5, 1, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 15, -15, 160, false, false, 5, 1, 2, 1, 1));
+        Difficulties.Add(new Difficulty(null, 8, -8, 110, false, false, 5, 2, 5, 1, 2));
+        Difficulties.Add(new Difficulty(null, 24, -5, 120, false, false, 5, 2, 3, 1, 0));
+        Difficulties.Add(new Difficulty(null, 20, -20, 140, false, true, 5, 3, 3, 2, 2));
+
+
+
+        DifficultySlider.maxValue = Difficulties.Count;
+
+        //bir dahaki versiyonda rangenolar daha yavaş artabilir
+        DifficultySlider.value = PlayerPrefs.GetInt("Difficulty Value");
+        
+        SliderDifficulty();
+
+        MathScores = new ushort[ScoreCount];
+
+
+
+        MathLevelPoint = 0;
+        for (int i = 0; i < MathScores.Length; i++)
         {
-            Training.LevelNo = 1;
+            MathScores[i] = (ushort)PlayerPrefs.GetInt("MathPoint " + i);
+            
+            MathLevelPoint += MathScores[i];
         }
+        UpdateMainScoreText();
 
-        GetLevelDurations(Archery);
-        GetLevelDurations(Math);
+
+
+
+        if (PlayerPrefs.GetInt("Training Finished") == 1)
+        {
+            TrainingCompleted = true;
+        }
+        if (PlayerPrefs.GetInt("PlayedOnce") == 1)
+        {
+            PlayedOnce = true;
+        }
+        //if (PlayerPrefs.GetInt("GameShared") == 1)
+        //{
+        //    ShareButton.enabled = false;
+        //    ShareBGift.enabled = false;
+        //}
+        if (PlayerPrefs.HasKey("PlayTicket"))
+        {
+            PlayTicketUpdate(PlayerPrefs.GetInt("PlayTicket"));
+        }
+        else
+        {
+            PlayTicketUpdate(7);
+        }
+        if (PlayerPrefs.GetInt("FacebookShared") == 1)
+        {
+            FacebookGift.enabled = false;
+            FacebookButton.interactable = false;
+        }
+        //if (PlayerPrefs.GetInt("OtherSocialNetworkShared") == 1)
+        //{
+        //    FacebookGift.enabled = false;
+        //}
+        //remove(PlayerPrefs.GetInt("GameShared") == 1)
+
+    }
+    private void Start()
+    {
+        //RequestConfiguration requestConfiguration =
+        //    new RequestConfiguration.Builder().SetTagForChildDirectedTreatment(TagForChildDirectedTreatment.True)
+        //    .SetMaxAdContentRating(MaxAdContentRating.G).build();
+
+
+        //MobileAds.SetRequestConfiguration(requestConfiguration);
+
+
+        MobileAds.Initialize((InitializationStatus initStatus) =>
+        {
+            // This callback is called once the MobileAds SDK is initialized.
+            LoadRewardedAd();
+        });
         
     }
-    private void GetLevelDurations(LevelType lt)
+    
+    public void PlayTicketUpdate(int count)
     {
-        for (int i = 0; i < lt.LastLevel; i++)
-        {
+        PlayTicketCount = count;
+        PlayTicketText.text = "Play Ticket : " + PlayTicketCount;
+        PlayerPrefs.SetInt("PlayTicket", PlayTicketCount);
+    }
+    public void GainPlayTicket(int PlayTCount)
+    {
+        PlayTicketUpdate(PlayTicketCount + PlayTCount);
+        ShowGameGuide(PlayTCount + " Play Ticket Gained", true, false);
+        PlayTicketButtons.SetActive(false);
+    }
+    public void OnPurchaseComplete(Product p)
+    {
+        GainPlayTicket(int.Parse(p.metadata.localizedTitle.ToString().Split(' ')[0]));
+        
+        Debug.Log(p.definition.id);
 
-            lt.LevelDurations[i] = PlayerPrefs.GetInt(lt.Type + " Level" + (i + 1) + " Duration");
+        PlayTicketButtons.SetActive(false);
+        
+        StartCoroutine(CloseIsProccessing(0.2f));
+    }
+    public void OnPurchaseFailed(Product p, PurchaseFailureDescription description)
+    {
+        ShowGameGuide(description.reason.ToString(), true, false);
+        Debug.Log("PF");
+        PlayTicketButtons.SetActive(false);
+        StartCoroutine(CloseIsProccessing(0.2f));
+    }
+    public void OnPurchaseButton()
+    {
+        isProcessing = true;
+        CloseSettingBox.enabled = true;
+        CloseGameGuide();
+    }
+    public IEnumerator CloseIsProccessing(float time)
+    {
+        yield return new WaitForSeconds(time);//0.2f
+        isProcessing = false;
+    }
+    
+    //public void IAPurButton(string productId)
+    //{
+    //    IAPButton.productId = productId;
+    //    CodelessIAPStoreListener.Instance.AddButton(this);
+    //    IAPButton.onProductFetched.Invoke(CodelessIAPStoreListener.Instance.GetProduct(productId));
+
+    //}
+    public void Ad()
+    {
+        //VideoAd
+        if (Application.internetReachability == NetworkReachability.NotReachable)
+        {
+            ShowGameGuide("No Internet", true, false);
+            PlayTicketButtons.SetActive(false);
         }
+        else
+        {
+            if (rewardedAd != null && rewardedAd.CanShowAd())
+            {
+                ShowRewardedAd();
+            }
+            else
+            {
+                ShowGameGuide("Wait a moment and click again", true, false);
+                PlayTicketButtons.SetActive(false);
+                MobileAds.Initialize((InitializationStatus initStatus) =>
+                {
+                    // This callback is called once the MobileAds SDK is initialized.
+                    LoadRewardedAd();
+
+                });
+            }
+
+        }
+    }
+    
+    private bool isFocus = false;
+    public bool isProcessing = false;
+    void OnApplicationFocus(bool focus)
+    {
+        isFocus = focus;
+        //Debug.Log("Focus : "+isFocus);
+    }
+    public void ShareGooglePlayStore()
+    {
+        if (!isProcessing)
+        {
+            StartCoroutine(ShareTextInAnroid());
+            
+        }
+        else
+        {
+            Debug.Log("No sharing set up for this platform.");
+        }
+        
+    }
+    public void SharePage()
+    {
+        ShowGameGuide("", false, false);
+        CloseSettingBox.enabled = true;
+        ShareButtons.SetActive(true);
+        
+    }
+    
+    
+    public IEnumerator ShareTextInAnroid()
+    {
+        var shareSubject = ""; //Subject text
+        var shareMessage = "A fun, targeting and mathematical game : " + //Message text
+                           "https://play.google.com/store/apps/details?id=com.KaanSelcukKaraboce.ArcherEquations"; //Your link
+        //Previous message:
+        //What is your level in mathematics?
+        //Find out with this game : 
+        isProcessing = true;
+
+        if (!Application.isEditor)
+        {
+            CloseSettingBox.enabled = true;
+            
+
+
+
+            //Create intent for action send
+            AndroidJavaClass intentClass =
+                new AndroidJavaClass("android.content.Intent");
+            AndroidJavaObject intentObject =
+                new AndroidJavaObject("android.content.Intent");
+            intentObject.Call<AndroidJavaObject>
+                ("setAction", intentClass.GetStatic<string>("ACTION_SEND"));
+            //put text and subject extra
+            intentObject.Call<AndroidJavaObject>("setType", "text/plain");
+
+            intentObject.Call<AndroidJavaObject>
+                ("putExtra", intentClass.GetStatic<string>("EXTRA_SUBJECT"), shareSubject);
+            intentObject.Call<AndroidJavaObject>
+                ("putExtra", intentClass.GetStatic<string>("EXTRA_TEXT"), shareMessage);
+
+            //call createChooser method of activity class
+            AndroidJavaClass unity = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+
+            AndroidJavaObject currentActivity =
+                unity.GetStatic<AndroidJavaObject>("currentActivity");
+            AndroidJavaObject chooser =
+                intentClass.CallStatic<AndroidJavaObject>
+                ("createChooser", intentObject, "Share your high score");
+            currentActivity.Call("startActivity", chooser);
+
+            yield return new WaitForSecondsRealtime(3);
+            PlayerPrefs.SetInt("GameShared", 1);
+            ShareButton.enabled = false;
+            //PlayTicketUpdate(PlayTicketCount + 20);
+            //ShowGameGuide("20 Play Ticket Gained", true, false);
+            GainPlayTicket(20);
+            ShareBGift.enabled = false;
+        }
+
+        yield return new WaitUntil(() => isFocus);
+        isProcessing = false;
+
+
+        
     }
     public void ResetLevels()
     {
@@ -2665,13 +2789,24 @@ public class Main : MonoBehaviour
         NumberShower[0].text = Equivalent;
         NumberShower[1].text = Equivalent;
         NumberShower[2].text = "=";
+
+        
         
 
         NumberShower[0].fontSize = TargetNoText.fontSize;
         NumberShower[1].fontSize = TargetNoText.fontSize;
         NumberShower[2].fontSize = TargetNoText.fontSize;
 
-        NumberShower[2].rectTransform.anchoredPosition = Vector3.zero;
+
+        if (TrainingLevels)
+        {
+            NumberShower[2].rectTransform.anchoredPosition = Vector3.zero;
+        }
+        else
+        {
+            NumberShower[2].rectTransform.position = OOAmmoText.rectTransform.position;
+        }
+
 
         yield return new WaitForSecondsRealtime(0.001f);
         
@@ -2694,48 +2829,7 @@ public class Main : MonoBehaviour
 
 
     private bool WonShowerReaching;
-    private IEnumerator MovableArrowedText(TMP_Text text, Vector2 TextEndPos, float OtherTextFontSize)
-    {
-        WonShowerReaching = false;
-        yield return new WaitForSecondsRealtime(0.2f);
-        WonShowerReaching = true;
-        Vector2 firstPos = text.rectTransform.anchoredPosition;
-        float time = 0;
-        bool FontSizeChange = OtherTextFontSize != text.fontSize;
-        float s = (OtherTextFontSize - text.fontSize) / 25f;
-        while (WonShowerReaching)
-        {
-            //yield return new WaitForSecondsRealtime(0.02f);
-            yield return new WaitForSeconds(0.005f);
-            time += Time.deltaTime;
-            if (time >= 0.01f)
-            {
-                time = 0;
-                //WonShower.rectTransform.anchoredPosition = Vector2.Lerp(WonShower.rectTransform.anchoredPosition, WonShowerEnd, 0.09f);
-                text.rectTransform.anchoredPosition += (TextEndPos - firstPos) / 25f;
-
-                if (FontSizeChange)
-                {
-                    text.fontSize += s;
-                }
-                //if (Vector2.Distance(text.rectTransform.anchoredPosition, TextEndPos) < 5)
-                //{
-                //    Debug.Log("Movable Arrowed Text Break");
-                //    text.rectTransform.anchoredPosition = TextEndPos;
-                //    WonShowerReaching = false;
-                //    break;
-                //}
-            }
-
-
-
-
-        }
-        GAs[0].Active = false;
-        GAs[1].Active = false;
-        GAs[2].Active = false;
-        WonShowerReaching = false;
-    }
+    
 
     private Vector2 LetterPos(TMP_Text Text, int Index, int Index2)
     {
@@ -2853,47 +2947,7 @@ public class Main : MonoBehaviour
     }
     private bool NextABlink = true;
     
-    private IEnumerator NextArrowBlink()
-    {
-        NextABlink = false;
-        yield return new WaitForSeconds(0.1f);
-        NextABlink = true;
-
-        float time = 0;
-        bool Blink = false;
-        Color c = LastBallUI.color;
-        while (NextABlink)
-        {
-            yield return new WaitForSeconds(0.005f);
-            if (BallsUI.ReadyCount <= BallsUI.Next/*BallsUI.Count <= 0*//*NextBallsUI.Count <= 0*/)
-            {
-
-                break;
-            }
-            //TMP_Text text = NextBallsUI[0].GetComponentInChildren<TMP_Text>();
-
-
-            time += Time.deltaTime * 10;
-            if (time >= 3.5)
-            {
-                time = 0;
-                Blink = !Blink;
-                if (Blink)
-                {
-                    LastBallUI.color = c;
-                }
-                else
-                {
-                    LastBallUI.color = Color.red;
-
-                }
-            }
-        }
-
-
-
-
-    }
+    
     private void UpdateNextAShower()
     {
 
@@ -2901,7 +2955,6 @@ public class Main : MonoBehaviour
     }
     private IEnumerator NextArrowShower()
     {
-        
         if (!CurrentBallShower.enabled)
         {
             //Debug.Log("CurrentBallShower");
@@ -2926,6 +2979,7 @@ public class Main : MonoBehaviour
             }
         }
         
+
 
 
 
@@ -2964,56 +3018,7 @@ public class Main : MonoBehaviour
 
 
 
-            //silinecek:
-            //if (StickArrowOperation > 1)
-            //{
-
-            //    switch (a.ArrowNo.Oparetion)
-            //    {
-            //        case 0:
-            //            if (StickedBlueCount <= CurrentBlueCount)
-            //            {
-            //                a.SetColor(RedSubtraction);
-            //                a.ArrowNo.Oparetion = 1;
-
-            //            }
-            //            else
-            //            {
-
-            //                a.SetColor(BlueAddition);
-
-            //                a.ArrowNo.Oparetion = 0;
-            //                CurrentBlueCount++;
-            //            }
-            //            break;
-
-            //        case 1:
-
-            //            if (FBallCount - StickedBlueCount <= CurrentRedCount)
-            //            {
-            //                a.SetColor(BlueAddition);
-
-            //                a.ArrowNo.Oparetion = 0;
-            //            }
-            //            else
-            //            {
-            //                a.SetColor(RedSubtraction);
-
-
-            //                a.ArrowNo.Oparetion = 1;
-            //                CurrentRedCount++;
-            //            }
-            //            break;
-            //    }
-
-            //}
-            //else
-            //{
-            //    a.SetColor(BlueAddition);
-
-
-            //    a.ArrowNo.Oparetion = 0;
-            //}
+            
         }
         else
         {
@@ -3021,10 +3026,24 @@ public class Main : MonoBehaviour
             switch (a.ArrowNo.Oparetion)
             {
                 case 0: a.SetColor(BlueAddition);
+
+
+
+                    
                     break;
                 case 1: a.SetColor(RedSubtraction);
+
+
+
                     break;
             }
+            //satır başka bir yere de koyulabilir her ok gerildiğinde yerine her yeni ok atıldığında ve bölüm başladığında çağırılabilir
+            ArrowPathColor.color = a.MatPB.GetColor("_Color");
+
+            //Color c=Color.RGBToHSV(a.MatPB.GetColor("_Color"));
+            //Color.HSVToRGB(0, 0,1);
+            //ArrowPathColor.color
+
         }
 
 
@@ -3235,7 +3254,7 @@ public class Main : MonoBehaviour
         {
             PlayAudio(ArrowThrowing0);
             Arrows.GetObject(false);
-
+            
             //yield return new WaitForSecondsRealtime(2);
             BallsUI.GetObject(false);
 
@@ -3286,6 +3305,42 @@ public class Main : MonoBehaviour
         ArrowAngle -= ArrowTurnSpeed * StepLength / Power;
         
     }
+    private void ScoreShower(ushort Score)
+    {
+        ShowGameGuide("+" + Score + " Point", true, false);
+    }
+    private void Win()
+    {
+        ThrowAMouseArea.enabled = false;
+        Won.SetActive(true);
+        TE.FastRotSpeed();
+        PlayAudio(WinEffect);
+        TE.CurrentTime = 0;
+
+        
+
+        if (TrainingLevels)
+        {
+            TrainingLevelChange(true);
+
+        }
+        else
+        {
+            if (CloseGameG != null)
+            {
+                StopCoroutine(CloseGameG);
+            }
+            CloseGameGuide();
+            ScoreShower(CurrentMathScore);
+            MathPoints(false);
+        }
+        NextLevelButton.SetActive(true);
+        StartCoroutine(WonEqualityShower());
+
+        RestartButImage.color = Color.gray;
+
+        
+    }
     //ifwon birkaç yerde kullanılıyor bazen check etmesine gerek olmuyor direk kazandıran method yazılacak
     public void IfWon()
     {
@@ -3296,31 +3351,31 @@ public class Main : MonoBehaviour
         //kontrol etmeden won eklenecek bazen kontrole gerek yok
         if (!Won.activeSelf)
         {
-            if (TE.TargetNo.UpNo == TE.Equivalent.UpNo)
+            if (TE.TargetNo.UpNo == TE.Equivalent.UpNo/*||CurrentDifficulty.MustUseAllArrows*/)
             {
-                //ThrowAMouseArea.enabled = false;
-                Won.SetActive(true);
-                TE.FastRotSpeed();
-                PlayAudio(WinEffect);
-
-                //AnotherLevel ve BlinkTargetNoText 'i buraya yazabilirim ayrı method olmasındansa:
-                //StartCoroutine(AnotherLevel());
-
-                //StartCoroutine(BlinkTargetNoText());
-                if (!(CurrentLevelType.Type == "Training" && CurrentLevelType.LevelNo == 2))
+                if (!CurrentDifficulty.MustUseAllArrows)
                 {
-                    NextLevelButton.SetActive(true);
+
+                    Win();
+
+                }
+                else if(Arrows.Next >= Arrows.ReadyCount)
+                {
+                    bool AllDidHit = true;
+                    foreach (GameObject g in Arrows.Objects)
+                    {
+                        if (!g.GetComponent<Arrow>().DidHit && g.activeSelf)
+                        {
+                            AllDidHit = false;
+                            
+                        }
+                    }
+                    if (AllDidHit)
+                    {
+                        Win();
+                    }
                 }
 
-                CurrentLevelType.LevelChange(true);
-                StartCoroutine(WonEqualityShower());
-
-                RestartButImage.color = Color.gray;
-
-
-
-                //screen=notclikable
-                //StartCoroutine(CylinderShake());
 
             }
             else if (Arrows.Next >= Arrows.ReadyCount)
@@ -3336,12 +3391,14 @@ public class Main : MonoBehaviour
                 //Debug.Log("AllSticked : " + AllSticked);
                 if (AllSticked && !Sliding)
                 {
-                    OOAmmoText.enabled = true;
-                    NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Try Again";
-
-                    NextLevelButton.SetActive(true);
-                    PlayAudio(LevelFailed);
+                    TE.CurrentTime = 0;
+                    CurrentMathScore = 0;
                     
+                    OOAmmoText.enabled = true;
+                    Tryagain();
+                    EnterRandomNums = false;
+                    
+
                 }
             }
             //CurrentArrow.transform.eulerAngles = new Vector3(90, CurrentArrow.transform.eulerAngles.y, 0);
@@ -3350,21 +3407,15 @@ public class Main : MonoBehaviour
         }
 
     }
-    private IEnumerator Failed()
+    public void Tryagain()
     {
-        //PlayAudio(FailedSound);
-        AudioS.Play();
-        while (true)
+        if (!TrainingLevels)
         {
-            yield return new WaitForSeconds(0.005f);
-            if (AudioS.time>0.35f)
-            {
-                
-                
-                break;
-            }
+            ScoreShower(0);
         }
-        
+        NextLevelButton.GetComponentInChildren<TMP_Text>().text = "Try Again";
+        NextLevelButton.SetActive(true);
+        PlayAudio(LevelFailed);
     }
 
     private IEnumerator CylinderShake()
@@ -3433,69 +3484,9 @@ public class Main : MonoBehaviour
         TargetNoText.color = OldColor;
         TE.NumberText.color = Color.black;
     }
-    //private void SaveLevelDuration()
-    //{
-    //    //Archery Level3 Duration
-    //    PlayerPrefs.SetInt(CurrentLevelType.Type+" Level"+CurrentLevelType.LevelNo+" Duration", CurrentLevelType.LevelDurations[CurrentLevelType.LevelNo-1]);
-    //}
-    private IEnumerator LevelDurationCounter()
-    {
-        ushort second = 0;
-        while (true)
-        {
-            yield return new WaitForSecondsRealtime(1);
-            if (Game.activeSelf)
-            {
-                second++;
-                if (second >= 10)
-                {
-                    CurrentLevelType.SaveLevelDuration();
-                    second = 0;
-                }
-                
-                //Debug.Log("Counted");
-                CurrentLevelType.LevelDurations[CurrentLevelType.LevelNo - 1]++;
-            }
-            else
-            {
-                break;
-            }
-            
-        }
-
-    }
     
-    private void WriteDurations(LevelType lt)
-    {
-        string[] Lines = new string[5];
-        int LineIndex = 0;
-        for (int i0 = 0; i0 < Lines.Length; i0++)
-        {
-            Lines[i0] = "";
-        }
-
-        int LevelNo = 1;
-        while (LevelNo <= lt.LastLevel)
-        {
-            int AllSecond = lt.LevelDurations[LevelNo - 1];
-            int minute = AllSecond / 60;
-            int second= AllSecond % 60;
-            Lines[LineIndex] += "  Level " + (LevelNo) + " : " + minute+":"+second;
-            LevelNo++;
-            LineIndex++;
-            if (LineIndex >= Lines.Length)
-            {
-                LineIndex = 0;
-            }
-        }
-        Durations.text += "\n";
-        Durations.text += lt.Type;
-        Durations.text += "\n";
-        foreach (string s in Lines)
-        {
-            Durations.text += s + "\n";
-        }
-    }
+    
+    
     public void ShowLevelDurations()
     {
         TE.enabled = false;
@@ -3503,8 +3494,8 @@ public class Main : MonoBehaviour
         Game.SetActive(false);
         Durations.enabled = true;
 
-        WriteDurations(Archery);
-        WriteDurations(Math);
+        //WriteDurations(Archery);
+        //WriteDurations(Math);
 
 
 
@@ -3620,5 +3611,113 @@ public class Main : MonoBehaviour
             s += fn.UpNo + "/" + fn.DownNo;
         }
         return s;
+    }
+
+    private string _adUnitIdAndroidRewarded = "ca-app-pub-7231413600508852/6299161912";
+    //test Id:ca-app-pub-3940256099942544/5224354917
+    //Correct Id:ca-app-pub-7231413600508852/6299161912
+
+
+    //appId:ca-app-pub-7231413600508852~2565545437
+    private RewardedAd rewardedAd;
+
+    public void LoadRewardedAd()
+    {
+        // Clean up the old ad before loading a new one.
+        if (rewardedAd != null)
+        {
+            rewardedAd.Destroy();
+            rewardedAd = null;
+        }
+
+        Debug.Log("Loading the rewarded ad.");
+
+        // create our request used to load the ad.
+        var adRequest = new AdRequest();
+
+        // send the request to load the ad.
+        RewardedAd.Load(_adUnitIdAndroidRewarded, adRequest,
+            (RewardedAd ad, LoadAdError error) =>
+            {
+                // if error is not null, the load request failed.
+                if (error != null || ad == null)
+                {
+                    Debug.LogError("Rewarded ad failed to load an ad " +
+                                   "with error : " + error);
+                    return;
+                }
+
+                Debug.Log("Rewarded ad loaded with response : "
+                          + ad.GetResponseInfo());
+
+                rewardedAd = ad;
+                RegisterEventHandlers();
+            });
+    }
+    public void ShowRewardedAd()
+    {
+        const string rewardMsg =
+            "Rewarded ad rewarded the user. Type: {0}, amount: {1}.";
+
+        //if (rewardedAd != null && rewardedAd.CanShowAd())
+        {
+            rewardedAd.Show((Reward reward) =>
+            {
+                // TODO: Reward the user.
+                Debug.Log(System.String.Format(rewardMsg, reward.Type, reward.Amount));
+                //Debug.Log("Ödül");
+                GainPlayTicket(8);
+
+            });
+        }
+    }
+
+    private void RegisterEventHandlers()
+    {
+
+
+        //// Raised when the ad is estimated to have earned money.
+        //rewardedAd.OnAdPaid += (AdValue adValue) =>
+        //{
+        //    Debug.Log(System.String.Format("Rewarded ad paid {0} {1}.",
+        //        adValue.Value,
+        //        adValue.CurrencyCode));
+
+
+        //};
+        //// Raised when an impression is recorded for an ad.
+        //rewardedAd.OnAdImpressionRecorded += () =>
+        //{
+        //    Debug.Log("Rewarded ad recorded an impression.");
+
+
+        //};
+        //// Raised when a click is recorded for an ad.
+        //rewardedAd.OnAdClicked += () =>
+        //{
+        //    Debug.Log("Rewarded ad was clicked.");
+
+
+        //};
+        //// Raised when an ad opened full screen content.
+        //rewardedAd.OnAdFullScreenContentOpened += () =>
+        //{
+        //    Debug.Log("Rewarded ad full screen content opened.");
+
+
+        //};
+        // Raised when the ad closed full screen content.
+        rewardedAd.OnAdFullScreenContentClosed += () =>
+        {
+            Debug.Log("Rewarded ad full screen content closed.");
+            LoadRewardedAd();
+        };
+        // Raised when the ad failed to open full screen content.
+        rewardedAd.OnAdFullScreenContentFailed += (AdError error) =>
+        {
+            Debug.LogError("Rewarded ad failed to open full screen content " +
+                           "with error : " + error);
+            LoadRewardedAd();
+        };
     }
 }

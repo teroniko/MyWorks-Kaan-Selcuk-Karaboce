@@ -63,6 +63,9 @@ public class TargetEquation : MonoBehaviour
     private CylinderCondition cc;
     private RoutesAndTime rt;
     private bool JustRot = false;
+    public TMP_Text TimeToEnd;
+    public int CurrentTime = 0;
+    public FracNo OldNo;
 
     private void Awake()
     {
@@ -112,15 +115,31 @@ public class TargetEquation : MonoBehaviour
     }
     public void SetNo()
     {
-        FracNo TargetFrac = M.RandomFrac(0, -10, 11);
-        Equivalent = TargetFrac;
-        No = TargetFrac;
+        if (M.EnterRandomNums)
+        {
+            FracNo TargetFrac = M.RandomFrac(0, -10, 11);
+            Equivalent = TargetFrac;
+            No = TargetFrac;
+            TargetNo = TargetFrac;
+            OldNo = TargetFrac;
+        }
+        else
+        {
+            Equivalent = OldNo;
+            No = OldNo;
+            TargetNo = OldNo;
+        }
 
-        TargetNo = TargetFrac;
-       
-        NumberText.text = M.FracNoToString(Equivalent, false, false);
 
-        //EquationBlink(0, 0, false);
+
+
+
+        //silinecek:
+        //NumberText.text = M.FracNoToString(Equivalent, false, false);
+
+
+
+
         EquationUpdate(0,false,false);
     }
     public void AddRT(byte Position, float Time)
@@ -265,7 +284,7 @@ public class TargetEquation : MonoBehaviour
 
 
     }
-    
+    float OneSecond = 0;
     private void Update()//was fixed, (delta time)
     {
 
@@ -276,8 +295,30 @@ public class TargetEquation : MonoBehaviour
         transform.Rotate(0, cc.RotDir * Delta * cc.RotSpeed, 0);
             transform.Translate((NextRoute - CurrentRoute).normalized * cc.CSpeed.Speed * Delta, Space.World);
 
+        if (CurrentTime !=0&& TimeToEnd.enabled)
+        {
+            OneSecond += Delta;
+            if (OneSecond >= 1)
+            {
+                OneSecond = 0;
+                //heryerde M var optimize edilebilir:
+                TimeToEnd.text = "Time : " + M.ConvertTime(--CurrentTime);
+                if (CurrentTime == M.CurrentDifficulty.MaxTime / 2)
+                {
+                    M.CurrentMathScore = (ushort)(M.CurrentMathScore*3/4f);
+                    M.ScoreText.text = "Score To Be Gained : " + M.CurrentMathScore;
+                }
+                if (CurrentTime <= 0)
+                {
+                    CurrentTime = 0;
+                    M.ThrowAMouseArea.enabled = false;
+                    M.Tryagain();
+                    M.ShowGameGuide("Time Out!", true,false);
+                }
+            }
+        }
         
-
+        
 
 
     }
@@ -344,7 +385,7 @@ public class TargetEquation : MonoBehaviour
         //M.IfWon();
         //M.NextLevelButton.SetActive(true);
         //M.NextTrainingText.enabled = false;
-        //M.GameGuideUI.SetActive(false);
+        //M.CloseGameGuide();
     }
     public void EquationUpdate(int NoOrder, bool Brackets, bool Attention0)
     {

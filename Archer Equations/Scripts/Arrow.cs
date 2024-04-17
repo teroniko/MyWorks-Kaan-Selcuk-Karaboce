@@ -1,12 +1,10 @@
 ﻿using System.Collections;
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 public class Arrow : MonoBehaviour
 {
+    public bool DidHit = false;
     public bool IsSticked = false;
     public Vector2 Speed;
     public GameObject Ball;
@@ -18,7 +16,8 @@ public class Arrow : MonoBehaviour
     public GameObject Number;
     public TMP_Text NoText;
     public FracNo ArrowNo;
-    public Material Mat;
+    public FracNo OldArrowNo;
+    //public Material Mat;
     public MaterialPropertyBlock MatPB;
     public MeshRenderer BallMeshRenderer;
     private float ArrowTurnSpeed;
@@ -31,7 +30,7 @@ public class Arrow : MonoBehaviour
     {
         m = Camera.main.GetComponent<Main>();
         MatPB = new MaterialPropertyBlock();
-
+        
         ArrowTurnSpeed = m.ArrowTurnSpeed;
         
 
@@ -60,11 +59,12 @@ public class Arrow : MonoBehaviour
     }
     private Arrow a;
     private RaycastHit hit;
+    public IEnumerator DoPop;
     public IEnumerator Go()
     {
         float deltaTime;
         m.NArrowIndex++;
-        //m.NextArrowNumbers();
+        
         IsSticked = false;
         while (!IsSticked)
         {
@@ -97,14 +97,14 @@ public class Arrow : MonoBehaviour
             if (Physics.Raycast(transform.position /*+ transform.right * Arrow0Height*/, transform.right, out /*RaycastHit*/ hit, 0.8f, m.LMaskTarget))
             {
                 a = hit.transform.GetComponentInParent<Arrow>();
+
                 
                 if (hit.transform.tag == "Ball")//Another arrow
                 {
                     m.PlayAudio(m.BubbleHit);
-                    m.StartCoroutine(Pop(false));
-
+                    a.BallPop();
+                    DidHit = true;
                     IsSticked = true;
-
 
                     CheckIfWon(false, 2);
                 }
@@ -112,7 +112,7 @@ public class Arrow : MonoBehaviour
                 {
                     m.PlayAudio(m.Leaf);
                     IsSticked = true;
-                    if(m.CurrentLevelType.Type == "Training"&&m.CurrentLevelType.LevelNo == 2)
+                    if(m.TrainingLevels)
                     {
                         m.SetLevel();
                     }
@@ -126,8 +126,8 @@ public class Arrow : MonoBehaviour
                 else/* if(hit.transform.tag=="Object")*///Cylinder
                 {
                     //transform.rotation = new Quaternion(1, transform.rotation.y, 0, 0);
-                    
-                    
+
+                    DidHit = true;
                     StickToCylinder(hit.transform, false);
 
                     CheckIfWon(true, 4);
@@ -140,9 +140,18 @@ public class Arrow : MonoBehaviour
         }
         IsSticked = true;
     }
-    
-    private float PopEffectDis = 0.15f;
-    private float PopEffectBallSize = 1.2f;
+    public void BallPop()
+    {
+        DoPop = Pop(false);
+        StartCoroutine(DoPop);
+    }
+    public void PopCheck()
+    {
+        if (DoPop != null)
+        {
+            StopCoroutine(DoPop);
+        }
+    }
     private void CylinderEffect(float PopEffectDis)
     {
         for (int i = 0; i < m.TE.transform.childCount; i++)
@@ -155,8 +164,8 @@ public class Arrow : MonoBehaviour
     }
     private void ArrowBallSizeEffect(float PopEffectBallSize)
     {
-        a.transform.localScale *= PopEffectBallSize;
-        a.Number.transform.localScale *= PopEffectBallSize;
+        transform.localScale *= PopEffectBallSize;
+        Number.transform.localScale *= PopEffectBallSize;
         //a.Ball.transform.localScale /= PopEffectBallSize;
         //a.gameObject.transform.position -= a.transform.right * PopEffectDis;
     }
@@ -164,36 +173,31 @@ public class Arrow : MonoBehaviour
     {
         if (Cylinder)
         {
-            CylinderEffect(-PopEffectDis);
+            CylinderEffect(-m.PopEffectDis);
         }
         else
         {
-            ArrowBallSizeEffect(PopEffectBallSize);
+            ArrowBallSizeEffect(m.PopEffectBallSize);
         }
 
-
         float time = 0;
-
-       
-
         while (time <= 0.17f)//bu sayıya dokunulmayacak
         {
             yield return new WaitForSeconds(0.005f);
             time += Time.deltaTime;
-
-
-
         }
 
         if (Cylinder)
         {
-            CylinderEffect(PopEffectDis);
+            CylinderEffect(m.PopEffectDis);
         }
         else
         {
-            ArrowBallSizeEffect(1/PopEffectBallSize);
+            ArrowBallSizeEffect(1 / m.PopEffectBallSize);
 
         }
+
+
 
     }
 
@@ -216,8 +220,8 @@ public class Arrow : MonoBehaviour
         m.CloseGuideTargets();
         m.TE.ccs[0].RotSpeed = 0;
 
-        m.NextTrainingText.enabled = false;
-        m.GameGuideUI.SetActive(false);
+        //m.NextTrainingText.enabled = false;
+        m.CloseGameGuide();
 
 
         //hit ile yap
@@ -240,82 +244,64 @@ public class Arrow : MonoBehaviour
     private void CheckIfWon(bool CylinderStick, int Level)
     {
 
-        if (m.CurrentLevelType.Type == "Training"&& m.CurrentLevelType.LevelNo != 1  && m.CurrentLevelType.LevelNo != 6)
+        if (m.TrainingLevels&& m.TrainingLevelNo != 1  && m.TrainingLevelNo != 7)
         {
             //bakılacak!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!:
-            if (CylinderStick && m.CurrentLevelType.LevelNo != 4)
+            //if (CylinderStick && m.CurrentLevelType.LevelNo != 4)
+            //{
+            //    m.SetLevel();
+            //}
+            //else
             {
-                m.SetLevel();
-            }
-            else
-            {
-                switch (m.CurrentLevelType.LevelNo)
+                switch (m.TrainingLevelNo)
                 {
-                    case 5:
-                        TrainingOperation();
-                        CurrentArrowUpdate();
+                    case 6:
+                        if (CylinderStick)
+                        {
+                            m.CloseGuideTargets();
+
+                            m.TE.EquationUpdate(0, false, false);
+                            StartCoroutine(m.GuideArrowUI(0, false));
+                            m.TE.ccs[0].RotSpeed = 5;
+
+                        }
+                        else
+                        {
+                            m.SetLevel();
+                        }
+
                         break;
+                    case 5:
                     case 4:
-                        
-                        TrainingOperation();
-                        CurrentArrowUpdate();
+
+                        if (m.StickedArrows.Objects[m.CorrectFracIndex].GetComponent<Arrow>() == a && !CylinderStick)
+                        {
+
+                            TrainingOperation();
+                            CurrentArrowUpdate();
+                        }
+                        else
+                        {
+                            m.SetLevel();
+                        }
+
 
                         break;
                     case 3:
-                        TrainingOperation();
+                        if (CylinderStick)
+                        {
+                            m.SetLevel();
+                        }
+                        else
+                        {
+                            TrainingOperation();
+                        }
+                        
 
 
 
                         break;
-                    //case 3:
-                        
-                    //    CurrentArrowUpdate();
-                        
-                    //    if (m.StickedArrows.Objects[m.CorrectFracIndex].GetComponent<Arrow>() == a)
-                    //        //a.NoOrder ile yapılabilir gerçi class ile classı eşit mi deyince içindeki numaraları karşılaştıruyo olabilir
-                    //    {
-
-                    //        m.TE.EquationUpdate(0, false, false);
-                    //        a.NoText.text = m.FracNoToString(a.ArrowNo, false, false);
-                    //        //optimize:
-                    //        m.CloseGuideArrows();
-                    //        m.CloseGuideTargets();
-                    //        //m.NextLevelButton.SetActive(true);
-                    //        m.NextTrainingText.enabled = false;
-                    //        m.GameGuideUI.SetActive(false);
-                            
-                    //        m.NextTrainingText.enabled = false;
-                    //        //m.StartCoroutine(m.GuideArrowUI(0, false, 8, false));
-                    //        //m.StartCoroutine(m.BowToAmmo());
-
-                    //        m.IfWon();
-                    //    }
-                    //    else
-                    //    {
-                    //        m.SetLevel();
-                    //    }
-                        
-                    //    m.SetCorrectFracIndex(1);
-                    //    break;
-                    //case 4:
-
-                    //    if (!CylinderStick)
-                    //    {
-
-                    //        m.SetLevel();
-                            
-                    //    }
-                    //    else if(!tooClose)
-                    //    {
-                    //        //optimize:
-                    //        m.StartCoroutine(m.GuideArrowUI(0, true, 0, false));
-                    //        m.TE.StartCoroutine(m.TE.WaitAndModify(false, null));
-                    //        m.CloseGuideArrows();
-                    //        m.CloseGuideTargets();
-                    //        m.NextTrainingText.enabled = false;
-                    //    }
-                        
-                    //    break;
+                    
                 }
 
 
@@ -326,8 +312,10 @@ public class Arrow : MonoBehaviour
             if (!CylinderStick)
             {
                 CurrentArrowUpdate();
+
+                gameObject.SetActive(false);
+                GetComponent<Arrow>().Number.SetActive(false);
             }
-            
             m.CloseGuideArrows();
             m.CloseGuideTargets();
             
@@ -339,6 +327,7 @@ public class Arrow : MonoBehaviour
     
     public void CurrentArrowUpdate()
     {
+        
         a.ArrowNo = m.FractionalOperation(a.ArrowNo, ArrowNo);
 
 
@@ -433,7 +422,7 @@ public class Arrow : MonoBehaviour
             
             Number.SetActive(false);
             Debug.Log("TooClose");
-            if (m.CurrentLevelType.Type == "Training" && m.CurrentLevelType.LevelNo == 4)
+            if (m.TrainingLevels && m.TrainingLevelNo == 6)
             {
                 StartCoroutine(TooClose(true));
             }
